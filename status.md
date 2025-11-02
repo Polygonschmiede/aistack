@@ -19,3 +19,18 @@
 - **Aufgabe:** Go-Projekt erneut initialisieren und Richtlinien anpassen.
 - **Vorgehen:** Legacy `main.go` entfernt, neuen Einstiegspunkt unter `cmd/aistack/main.go` angelegt, `go.mod` um `go 1.22` ergänzt, `AGENTS.md` auf die neue Struktur aktualisiert; `go`/`gofmt` sind lokal nicht verfügbar, daher konnte kein automatischer Format- oder Tidy-Lauf erfolgen.
 - **Status:** Abgeschlossen — Basisskelett aktualisiert, manuelle Formatprüfung empfohlen sobald Go-Werkzeuge installiert sind.
+
+## 2025-11-02 13:35 CET — Vollständige Infrastruktur-Setup
+- **Aufgabe:** CLAUDE.md erstellen und komplette Repository-Infrastruktur aufbauen.
+- **Vorgehen:**
+  - `CLAUDE.md` mit Architektur-Übersicht, Epic-Struktur, Build-Commands und Coding-Standards erstellt
+  - `README.md` mit Quickstart, Projekt-Übersicht und Roadmap verfasst
+  - `Makefile` mit allen Build-, Test- und Lint-Targets angelegt
+  - `.golangci.yml` für Linter-Konfiguration erstellt
+  - `.editorconfig` für konsistente Editor-Einstellungen hinzugefügt
+  - `CONTRIBUTING.md` mit Contribution-Guidelines verfasst
+  - `.github/workflows/ci.yml` für CI/CD Pipeline (Lint, Test, Build) erstellt
+  - `config.yaml.example` als Vorlage für System-/User-Konfiguration angelegt
+  - Verzeichnisstruktur komplett aufgebaut: `internal/{installer,services,power,metrics,diag,update}`, `assets/systemd`, `compose/`
+  - `.gitkeep` Dateien für leere Verzeichnisse hinzugefügt
+- **Status:** Abgeschlossen — Repository-Infrastruktur ist vollständig und production-ready. Projekt bereit für EP-001 Story T-001 Implementation.
