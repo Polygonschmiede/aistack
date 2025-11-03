@@ -63,6 +63,8 @@ func commandHandlers() map[string]func() {
 		"wol-apply":    runWoLApply,
 		"wol-relay":    runWoLRelay,
 		"models":       runModels,
+		"health":       runHealth,
+		"repair":       func() { runServiceCommand("repair") },
 		"version":      runVersion,
 		"help":         printUsage,
 		"--help":       printUsage,
@@ -257,6 +259,39 @@ func runServiceCommand(command string) {
 			os.Exit(1)
 		}
 		fmt.Print(logs)
+	case "repair":
+		// Story T-026: Repair-Command für einzelne Services
+		fmt.Printf("Repairing service: %s\n", serviceName)
+		fmt.Println("This will stop, remove, and recreate the service.")
+		fmt.Println("Volumes will be preserved. Health checks will validate the repair.")
+		fmt.Println()
+
+		result, err := manager.RepairService(serviceName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\n❌ Repair failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Display result
+		fmt.Println()
+		fmt.Println("=== Repair Result ===")
+		fmt.Printf("Service: %s\n", result.ServiceName)
+		fmt.Printf("Health Before: %s\n", result.HealthBefore)
+		fmt.Printf("Health After:  %s\n", result.HealthAfter)
+
+		if result.SkippedReason != "" {
+			fmt.Printf("\nℹ  Skipped: %s\n", result.SkippedReason)
+		}
+
+		if result.Success {
+			fmt.Printf("\n✓ Service %s repaired successfully\n", serviceName)
+		} else {
+			fmt.Fprintf(os.Stderr, "\n❌ Repair completed but service is not healthy\n")
+			if result.ErrorMessage != "" {
+				fmt.Fprintf(os.Stderr, "   Error: %s\n", result.ErrorMessage)
+			}
+			os.Exit(1)
+		}
 	}
 }
 
@@ -338,6 +373,99 @@ func runStatus() {
 	for _, status := range statuses {
 		fmt.Printf("%-12s  State: %-10s  Health: %s\n",
 			status.Name, status.State, status.Health)
+	}
+}
+
+// runHealth generates a comprehensive health report
+// Story T-025: Health-Reporter (Services + GPU Smoke)
+func runHealth() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create health reporter
+	reporter := services.NewHealthReporter(manager, nil, logger)
+
+	// Generate report
+	fmt.Println("Generating health report...")
+	report, err := reporter.GenerateReport()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating health report: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display report
+	fmt.Println()
+	fmt.Println("=== Health Report ===")
+	fmt.Printf("Timestamp: %s\n", report.Timestamp.Format(time.RFC3339))
+	fmt.Println()
+
+	fmt.Println("Services:")
+	for _, service := range report.Services {
+		icon := getHealthIcon(service.Health)
+		fmt.Printf("  %s %-12s  Health: %s", icon, service.Name, service.Health)
+		if service.Message != "" {
+			fmt.Printf(" (%s)", service.Message)
+		}
+		fmt.Println()
+	}
+
+	fmt.Println()
+	fmt.Println("GPU:")
+	if report.GPU.OK {
+		fmt.Printf("  ✓ Status: OK")
+		if report.GPU.Message != "" {
+			fmt.Printf(" (%s)", report.GPU.Message)
+		}
+		fmt.Println()
+	} else {
+		fmt.Printf("  ✗ Status: FAILED")
+		if report.GPU.Message != "" {
+			fmt.Printf(" (%s)", report.GPU.Message)
+		}
+		fmt.Println()
+	}
+
+	// Save report if requested
+	if len(os.Args) > 2 && os.Args[2] == "--save" {
+		reportPath := "/var/lib/aistack/health_report.json"
+		if os.Getenv("AISTACK_STATE_DIR") != "" {
+			reportPath = filepath.Join(os.Getenv("AISTACK_STATE_DIR"), "health_report.json")
+		}
+
+		if err := reporter.SaveReport(report, reportPath); err != nil {
+			fmt.Fprintf(os.Stderr, "\nWarning: Failed to save report: %v\n", err)
+		} else {
+			fmt.Printf("\nReport saved to: %s\n", reportPath)
+		}
+	}
+
+	// Exit with error if not all healthy
+	if !report.GPU.OK {
+		os.Exit(1)
+	}
+	for _, service := range report.Services {
+		if service.Health != services.HealthGreen {
+			os.Exit(1)
+		}
+	}
+}
+
+func getHealthIcon(health services.HealthStatus) string {
+	switch health {
+	case services.HealthGreen:
+		return "✓"
+	case services.HealthYellow:
+		return "⚠"
+	case services.HealthRed:
+		return "✗"
+	default:
+		return "?"
 	}
 }
 
@@ -1305,6 +1433,8 @@ Usage:
   aistack remove <service> [--purge] Remove a service (keeps data by default)
   aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
   aistack status                   Show status of all services
+  aistack health [--save]          Generate comprehensive health report (services + GPU)
+  aistack repair <service>         Repair a service (stop → remove → recreate with health check)
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack gpu-unlock               Force unlock GPU mutex (recovery)
   aistack metrics-test             Test metrics collection (CPU/GPU)

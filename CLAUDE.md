@@ -470,6 +470,101 @@ Log service.removed event
 - Tests verify volume deletion with keepData=false
 - Graceful degradation on errors (logged warnings, no hard failures)
 
+### Health Checks & Repair Architecture
+
+The health check and repair subsystem (`internal/services/health_reporter.go`, `repair.go`) provides comprehensive health monitoring and automated service repair:
+
+**Health Reporter** (Story T-025):
+- `HealthReport`: Aggregated health report with timestamp, service statuses, and GPU health
+- `ServiceHealthStatus`: Per-service health with name, status (green/yellow/red), and optional message
+- `GPUHealthStatus`: GPU smoke test result (NVML init/shutdown check)
+- `HealthReporter.GenerateReport()`: Collects health from all services and GPU
+- `HealthReporter.SaveReport()`: Persists report to JSON (default: `/var/lib/aistack/health_report.json`)
+- `HealthReporter.CheckAllHealthy()`: Boolean check for automation (returns false if any component unhealthy)
+
+**GPU Health Checker**:
+- `DefaultGPUHealthChecker`: Performs NVML init/shutdown smoke test
+- Returns GPU count on success, error message on failure
+- Graceful degradation when GPU not available (reports as not OK, doesn't crash)
+
+**Service Repair** (Story T-026):
+- `RepairResult`: Tracks repair operation with before/after health, success status, error messages
+- `Manager.RepairService()`: Idempotent repair workflow
+  1. Check current health (skip if already green - no-op)
+  2. Stop service (graceful, errors logged)
+  3. Remove container (volumes preserved)
+  4. Start service (recreate with compose)
+  5. Wait 5s for initialization
+  6. Recheck health (green = success, otherwise fail)
+- `Manager.RepairAll()`: Repairs all unhealthy services automatically
+
+**Repair Workflow**:
+```
+Check health
+  ├─ Green → Skip (idempotent)
+  └─ Red/Yellow → Continue
+      ↓
+Stop service (ignore errors)
+      ↓
+Remove container (ignore errors)
+      ↓
+Start service
+      ↓
+Wait 5s
+      ↓
+Health check
+      ├─ Green → Success
+      └─ Red → Failed (but service recreated)
+```
+
+**Health Report Format** (`health_report.json`):
+```json
+{
+  "timestamp": "2025-11-03T20:00:00Z",
+  "services": [
+    {
+      "name": "ollama",
+      "health": "green",
+      "message": ""
+    }
+  ],
+  "gpu": {
+    "ok": true,
+    "message": "2 GPU(s) detected"
+  }
+}
+```
+
+**CLI Commands**:
+- `aistack health [--save]`: Generate and display health report, optionally save to JSON
+- `aistack repair <service>`: Repair a specific service with health validation
+
+**Event Logging**:
+- `health.report.start`: Health report generation started
+- `health.report.service`: Service health checked
+- `health.report.complete`: Health report generated
+- `health.report.save`: Saving report to file
+- `health.report.saved`: Report saved successfully
+- `health.gpu.check.start`: GPU smoke test started
+- `health.gpu.check.success`: GPU smoke test passed
+- `health.gpu.check.failed`: GPU smoke test failed
+- `service.repair.started`: Repair initiated
+- `service.repair.stopping`: Stopping service for repair
+- `service.repair.removing`: Removing container
+- `service.repair.starting`: Starting service
+- `service.repair.waiting`: Waiting for initialization
+- `service.repair.health_check`: Rechecking health after repair
+- `service.repair.completed`: Repair completed successfully
+- `service.repair.failed`: Repair failed (service not healthy)
+- `service.repair.skipped`: Repair skipped (already healthy)
+
+**Testing Pattern**:
+- MockGPUHealthChecker for GPU simulation
+- DynamicMockHealthCheck for state transitions (red → green after repair)
+- Table-driven tests for various repair scenarios
+- Idempotency testing (repair on already-healthy service)
+- Volume preservation verification
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

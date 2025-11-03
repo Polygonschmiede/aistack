@@ -748,3 +748,91 @@
   - ✓ Clean Architecture: UI State getrennt von System State
   - ⏳ Log-Viewer, Profile-Selection (Future Stories, Placeholder-Screens implementiert)
   - Hinweis: Screens außer Status zeigen Placeholder; Implementierung in zukünftigen Epics
+
+## 2025-11-03 21:00 CET — EP-014 Implementation (Health Checks & Repair Flows)
+- **Aufgabe:** EP-014 "Health Checks & Repair Flows" vollständig implementieren (Story T-025 & T-026).
+- **Vorgehen:**
+  - Analysiert bestehende Service- und GPU-Strukturen
+  - **Story T-025 (Health-Reporter) implementiert**:
+    - `internal/services/health_reporter.go`: Aggregierter Health-Reporter erstellt
+    - `HealthReport`: Data Contract mit Timestamp, Services[], GPU{}
+    - `ServiceHealthStatus`: Per-Service Health (name, health, message)
+    - `GPUHealthStatus`: GPU Smoke Test (NVML Init/Shutdown)
+    - `HealthReporter.GenerateReport()`: Sammelt alle Service- und GPU-Health-Stati
+    - `HealthReporter.SaveReport()`: Persistiert zu JSON (/var/lib/aistack/health_report.json)
+    - `HealthReporter.CheckAllHealthy()`: Boolean für Automation
+    - `DefaultGPUHealthChecker`: GPU-Schnelltest via NVML
+    - Graceful Degradation: GPU unavailable → reports as not OK (no crash)
+  - **Story T-026 (Repair-Command) implementiert**:
+    - `internal/services/repair.go`: Service-Repair-Funktionalität
+    - `RepairResult`: Tracks before/after health, success, error messages, skipped reason
+    - `Manager.RepairService()`: Idempotent Repair-Workflow
+      1. Check current health → Skip if green (no-op)
+      2. Stop service (graceful, errors logged)
+      3. Remove container via `runtime.RemoveContainer()` (volumes preserved)
+      4. Start service (recreate with compose)
+      5. Wait 5s for initialization
+      6. Recheck health → Success if green
+    - `Manager.RepairAll()`: Repariert alle unhealthy Services
+    - Volumes werden NICHT gelöscht (nur Container-Rebuild)
+  - **Runtime Interface erweitert**:
+    - `RemoveContainer(name string) error` zu Runtime Interface hinzugefügt
+    - Implementiert für DockerRuntime und PodmanRuntime (`docker rm -f`, `podman rm -f`)
+    - MockRuntime erweitert: RemovedContainers[], containerStatuses map, startError
+  - **CLI Commands hinzugefügt**:
+    - `aistack health [--save]`: Generiert Health-Report, optional JSON-Speicherung
+    - `aistack repair <service>`: Repariert Service mit Health-Validation
+    - Hilfe-Text in `printUsage()` aktualisiert
+    - Health-Icon-Funktion für User-Feedback (✓/⚠/✗)
+  - **Comprehensive Unit Tests**:
+    - `health_reporter_test.go`: 3 Testfunktionen, 6 Subtests
+      - GenerateReport: all green, service red, GPU fail
+      - SaveReport: JSON-Persistierung
+      - CheckAllHealthy: Aggregierte Validation
+    - `repair_test.go`: 3 Testfunktionen, 10 Subtests
+      - RepairService: successful repair, idempotent skip, failures
+      - RepairService_VolumesPreserved: Verifiziert Volume-Erhalt
+      - RepairAll: Multi-Service Repair
+    - MockGPUHealthChecker für GPU-Simulation
+    - DynamicMockHealthCheck für Health-Transitions (red → green)
+    - UpdaterMockHealthCheck umbenannt (conflict mit health_reporter_test.go gelöst)
+  - **Testing & Validation**:
+    - ✓ `go test ./internal/services/... -v`: Alle 32 Service-Tests erfolgreich (32.329s)
+    - ✓ `go test ./...`: Alle Projekt-Tests erfolgreich
+    - ✓ `go build ./cmd/aistack`: Erfolgreicher Build
+    - ✓ Health-Reporter mit GPU-Smoke-Test validiert
+    - ✓ Repair idempotent (skip if healthy)
+    - ✓ Volume preservation verifiziert
+  - **Dokumentation aktualisiert**:
+    - `CLAUDE.md`: Neuer Abschnitt "Health Checks & Repair Architecture"
+      - Health Reporter Details
+      - GPU Health Checker
+      - Service Repair Workflow
+      - Health Report Format (JSON Schema)
+      - CLI Commands
+      - Event Logging
+      - Testing Pattern
+    - `status.md`: Dieser Eintrag
+- **Status:** Abgeschlossen — EP-014 implementiert. DoD erfüllt:
+  - ✓ Story T-025: Health-Reporter (Services + GPU Smoke)
+    - Konsistenter Health-Report erzeugt
+    - HTTP/Port-Probes funktionieren
+    - GPU-Schnelltest (NVML init/shutdown)
+    - health_report.json Data Contract implementiert
+    - Alle Services zeigen green bei laufendem System
+    - Defekte Services zeigen red mit Fehlertext
+    - NVML-Fehler → gpu.ok=false mit Hinweis
+  - ✓ Story T-026: Repair-Command für einzelne Services
+    - `aistack repair <service>` funktioniert
+    - Stop → Remove → Recreate (Volumes unberührt)
+    - Health-Recheck nach Repair
+    - Defekter Service → Repair → Health grün
+    - Weiterhin Fehler → failed mit Details
+    - Intakter Service → repair no-op (Exit 0, idempotent)
+    - Datenverlust vermieden (Volumes bleiben)
+  - ✓ Unit-Tests mit Table-Driven-Pattern
+  - ✓ Clean Code: Klare Trennung Health-Reporter / Repair
+  - ✓ Event-Logging für alle Health- und Repair-Operations
+  - ✓ Graceful Degradation bei GPU unavailable
+  - ⏳ Dry-Run-Option für Repair (Future Enhancement)
+  - ⏳ Retry-Backoff, Circuit-Breaker (Future Enhancement)

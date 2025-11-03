@@ -30,6 +30,8 @@ type Runtime interface {
 	GetContainerLogs(name string, tail int) (string, error)
 	// RemoveVolume removes a volume
 	RemoveVolume(name string) error
+	// RemoveContainer removes a container
+	RemoveContainer(name string) error
 	// TagImage retags an image reference (digest or ID) to a target reference
 	TagImage(source string, target string) error
 }
@@ -203,6 +205,20 @@ func (r *DockerRuntime) RemoveVolume(name string) error {
 	return nil
 }
 
+// RemoveContainer removes a container
+func (r *DockerRuntime) RemoveContainer(name string) error {
+	// #nosec G204 — container name is validated before use
+	cmd := exec.Command("docker", "rm", "-f", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		// Container might not exist - return error for caller to handle
+		return fmt.Errorf("failed to remove container %s: %w, stderr: %s", name, err, stderr.String())
+	}
+	return nil
+}
+
 // TagImage retags a Docker image reference
 func (r *DockerRuntime) TagImage(source, target string) error {
 	// #nosec G204 — image references are validated before use.
@@ -346,6 +362,19 @@ func (r *PodmanRuntime) RemoveVolume(name string) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove podman volume %s: %w, stderr: %s", name, err, stderr.String())
+	}
+
+	return nil
+}
+
+// RemoveContainer removes a Podman container
+func (r *PodmanRuntime) RemoveContainer(name string) error {
+	cmd := exec.Command("podman", "rm", "-f", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove podman container %s: %w, stderr: %s", name, err, stderr.String())
 	}
 
 	return nil

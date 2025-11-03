@@ -28,7 +28,7 @@ func TestServiceUpdater_Update_NewImage(t *testing.T) {
 		logger:  logger,
 	}
 
-	healthCheck := &MockHealthCheck{
+	healthCheck := &UpdaterMockHealthCheck{
 		shouldPass: true,
 	}
 
@@ -84,7 +84,7 @@ func TestServiceUpdater_Update_HealthFails(t *testing.T) {
 	}
 
 	// Health check that fails after update but succeeds after rollback
-	healthCheck := &MockHealthCheck{
+	healthCheck := &UpdaterMockHealthCheck{
 		shouldPass:     false, // Fails initially
 		passAfterCalls: 1,     // Pass after first call (rollback)
 		callCount:      0,
@@ -132,7 +132,7 @@ func TestServiceUpdater_Update_NoChange(t *testing.T) {
 		logger:  logger,
 	}
 
-	healthCheck := &MockHealthCheck{
+	healthCheck := &UpdaterMockHealthCheck{
 		shouldPass: true,
 	}
 
@@ -180,14 +180,14 @@ func TestLoadUpdatePlan_NotExists(t *testing.T) {
 	}
 }
 
-// MockHealthCheck for testing
-type MockHealthCheck struct {
+// UpdaterMockHealthCheck for testing updater with dynamic health states
+type UpdaterMockHealthCheck struct {
 	shouldPass     bool
 	passAfterCalls int
 	callCount      int
 }
 
-func (m *MockHealthCheck) Check() (HealthStatus, error) {
+func (m *UpdaterMockHealthCheck) Check() (HealthStatus, error) {
 	m.callCount++
 	if m.passAfterCalls > 0 && m.callCount > m.passAfterCalls {
 		return HealthGreen, nil

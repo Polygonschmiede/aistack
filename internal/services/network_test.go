@@ -7,24 +7,29 @@ import (
 
 // MockRuntime is a mock implementation of Runtime for testing
 type MockRuntime struct {
-	networks       map[string]bool
-	volumes        map[string]bool
-	RemovedVolumes []string // Track removed volumes for testing
-	isRunning      bool
-	imageID        string
-	newImageID     string
-	ImageID        string // Exposed for test setup
+	networks          map[string]bool
+	volumes           map[string]bool
+	RemovedVolumes    []string // Track removed volumes for testing
+	RemovedContainers []string // Track removed containers for testing
+	isRunning         bool
+	imageID           string
+	newImageID        string
+	ImageID           string                   // Exposed for test setup
+	containerStatuses map[string]ServiceStatus // For dynamic container status
+	startError        error                    // Simulate start failures
 }
 
 func NewMockRuntime() *MockRuntime {
 	return &MockRuntime{
-		networks:       make(map[string]bool),
-		volumes:        make(map[string]bool),
-		RemovedVolumes: make([]string, 0),
-		isRunning:      true,
-		imageID:        "sha256:mock123",
-		newImageID:     "sha256:mock456",
-		ImageID:        "sha256:mock123",
+		networks:          make(map[string]bool),
+		volumes:           make(map[string]bool),
+		RemovedVolumes:    make([]string, 0),
+		RemovedContainers: make([]string, 0),
+		isRunning:         true,
+		imageID:           "sha256:mock123",
+		newImageID:        "sha256:mock456",
+		ImageID:           "sha256:mock123",
+		containerStatuses: make(map[string]ServiceStatus),
 	}
 }
 
@@ -43,6 +48,9 @@ func (m *MockRuntime) CreateVolume(name string) error {
 }
 
 func (m *MockRuntime) ComposeUp(composeFile string, services ...string) error {
+	if m.startError != nil {
+		return m.startError
+	}
 	return nil
 }
 
@@ -51,6 +59,11 @@ func (m *MockRuntime) ComposeDown(composeFile string) error {
 }
 
 func (m *MockRuntime) GetContainerStatus(name string) (string, error) {
+	// Check if we have a custom status for this container
+	if status, ok := m.containerStatuses[name]; ok {
+		return status.State, nil
+	}
+	// Default to running for backward compatibility
 	return "running", nil
 }
 
@@ -71,6 +84,11 @@ func (m *MockRuntime) GetContainerLogs(name string, tail int) (string, error) {
 func (m *MockRuntime) RemoveVolume(name string) error {
 	m.RemovedVolumes = append(m.RemovedVolumes, name)
 	delete(m.volumes, name)
+	return nil
+}
+
+func (m *MockRuntime) RemoveContainer(name string) error {
+	m.RemovedContainers = append(m.RemovedContainers, name)
 	return nil
 }
 
