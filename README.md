@@ -51,16 +51,23 @@ make coverage      # Generate coverage report
 ### CLI Commands
 
 ```bash
-./aistack                     # Start TUI (default)
-./aistack agent               # Run as background agent service
-./aistack idle-check          # Perform idle evaluation (timer-triggered)
-./aistack gpu-check           # Check GPU and NVIDIA stack
-./aistack metrics-test        # Test metrics collection (3 samples)
-./aistack wol-check           # Check Wake-on-LAN status
-./aistack wol-setup <iface>   # Enable Wake-on-LAN (requires root)
-./aistack wol-send <mac> [ip] # Send Wake-on-LAN magic packet
-./aistack version             # Show version
-./aistack help                # Show all commands
+./aistack                          # Start TUI (default)
+./aistack agent                    # Run as background agent service
+./aistack idle-check               # Perform idle evaluation (timer-triggered)
+./aistack install --profile <name> # Install from profile (standard-gpu, minimal)
+./aistack install <service>        # Install specific service (ollama, openwebui, localai)
+./aistack start <service>          # Start a service
+./aistack stop <service>           # Stop a service
+./aistack update <service>         # Update service to latest (with rollback)
+./aistack logs <service> [lines]   # Show service logs (default: 100 lines)
+./aistack status                   # Show status of all services
+./aistack gpu-check                # Check GPU and NVIDIA stack
+./aistack metrics-test             # Test metrics collection (3 samples)
+./aistack wol-check                # Check Wake-on-LAN status
+./aistack wol-setup <iface>        # Enable Wake-on-LAN (requires root)
+./aistack wol-send <mac> [ip]      # Send Wake-on-LAN magic packet
+./aistack version                  # Show version
+./aistack help                     # Show all commands
 ```
 
 ## Project Status
@@ -74,7 +81,8 @@ Currently implementing foundational epics:
 - ✅ **EP-005**: Metrics & Sensors (CPU/GPU/Power monitoring)
 - ✅ **EP-006**: Idle Engine & Autosuspend (Sliding window detection)
 - ✅ **EP-007**: Wake-on-LAN Setup (WoL detection, magic packet sender)
-- 📋 **EP-008-010**: Service Orchestration (Ollama, Open WebUI, LocalAI)
+- ✅ **EP-008**: Ollama Orchestration (Lifecycle + Update/Rollback)
+- 📋 **EP-009-010**: Service Orchestration (Open WebUI, LocalAI)
 
 See `docs/features/epics.md` for complete roadmap.
 

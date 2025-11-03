@@ -16,6 +16,8 @@ type Service interface {
 	Status() (ServiceStatus, error)
 	Health() (HealthStatus, error)
 	Remove(keepData bool) error
+	Update() error
+	Logs(tail int) (string, error)
 }
 
 // ServiceStatus represents the status of a service
@@ -30,7 +32,7 @@ type ServiceStatus struct {
 type BaseService struct {
 	name        string
 	composeFile string
-	healthCheck HealthCheck
+	healthCheck HealthChecker
 	volumes     []string
 	runtime     Runtime
 	logger      *logging.Logger
@@ -38,7 +40,7 @@ type BaseService struct {
 }
 
 // NewBaseService creates a new base service
-func NewBaseService(name, composeDir string, healthCheck HealthCheck, volumes []string, runtime Runtime, logger *logging.Logger) *BaseService {
+func NewBaseService(name, composeDir string, healthCheck HealthChecker, volumes []string, runtime Runtime, logger *logging.Logger) *BaseService {
 	return &BaseService{
 		name:        name,
 		composeFile: filepath.Join(composeDir, name+".yaml"),
@@ -189,12 +191,37 @@ func (s *BaseService) Remove(keepData bool) error {
 		})
 	}
 
-	// TODO: If !keepData, remove volumes
-	// This would require additional runtime methods for volume removal
+	// Remove volumes if requested
+	if !keepData {
+		for _, volume := range s.volumes {
+			if err := s.runtime.RemoveVolume(volume); err != nil {
+				s.logger.Warn("service.remove.volume_error", "Error removing volume", map[string]interface{}{
+					"service": s.name,
+					"volume":  volume,
+					"error":   err.Error(),
+				})
+			}
+		}
+	}
 
 	s.logger.Info("service.removed", fmt.Sprintf("%s service removed", s.name), map[string]interface{}{
 		"service": s.name,
 	})
 
 	return nil
+}
+
+// Update performs a service update - must be implemented by concrete services
+func (s *BaseService) Update() error {
+	return fmt.Errorf("update not implemented for base service")
+}
+
+// Logs retrieves logs from the service container
+func (s *BaseService) Logs(tail int) (string, error) {
+	containerName := fmt.Sprintf("aistack-%s", s.name)
+	logs, err := s.runtime.GetContainerLogs(containerName, tail)
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs for %s: %w", s.name, err)
+	}
+	return logs, nil
 }

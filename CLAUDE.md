@@ -247,6 +247,79 @@ The Wake-on-LAN subsystem (`internal/wol/`) provides remote system wake-up capab
 - Would provide HTTP→WoL gateway for remote wake-up via API
 - Planned for future enhancement
 
+### Service Update & Rollback Architecture
+
+The service update subsystem (`internal/services/updater.go`) provides safe service updates with automatic rollback:
+
+**Update Plan** (`UpdatePlan`):
+- Tracks update operations for rollback capability
+- Fields: ServiceName, OldImageID, NewImage, NewImageID, Status, HealthAfterSwap
+- Persisted to `/var/lib/aistack/{service}_update_plan.json`
+- Status values: pending, completed, rolled_back, failed
+
+**ServiceUpdater**:
+- `Update()`: Pull image → Health validation → Swap or Rollback
+- Image change detection: Skips restart if image unchanged
+- 5-second health check delay after service restart
+- Automatic rollback on health check failure
+
+**Update Workflow**:
+```
+Get current image ID (for rollback tracking)
+  ↓
+Pull new image
+  ↓
+Get new image ID
+  ↓
+Compare IDs (skip if unchanged)
+  ↓
+Stop service
+  ↓
+Start service with new image
+  ↓
+Wait 5s for initialization
+  ↓
+Health check
+  ├─ Green → Mark as completed
+  └─ Red → Rollback
+      ├─ Stop service
+      ├─ Start service (uses old image from cache)
+      ├─ Wait 5s
+      ├─ Health check
+      ├─ Green → Mark as rolled_back
+      └─ Red → Mark as failed
+```
+
+**Service-Specific Images**:
+- Ollama: `ollama/ollama:latest`
+- OpenWebUI: `ghcr.io/open-webui/open-webui:main`
+- LocalAI: `quay.io/go-skynet/local-ai:latest`
+
+**Runtime Extensions**:
+- `PullImage()`: Docker image pull
+- `GetImageID()`: Image ID retrieval for comparison
+- `GetContainerLogs()`: Log retrieval with tail support
+- `RemoveVolume()`: Volume cleanup on service removal
+
+**HealthChecker Interface**:
+- Abstracts health checking for testability
+- `HealthCheck` struct implements interface
+- Allows mock health checks in tests
+
+**CLI Commands**:
+- `aistack update <service>`: Update with automatic rollback
+- `aistack logs <service> [lines]`: View container logs (default: 100 lines)
+
+**Event Logging**:
+- `service.update.start`: Update initiated
+- `service.update.pull`: Image pull started
+- `service.update.restart`: Service restart
+- `service.update.health_check`: Health validation
+- `service.update.success`: Update completed
+- `service.update.health_failed`: Health check failed
+- `service.update.rollback`: Rollback initiated
+- `service.update.rollback.success`: Rollback succeeded
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

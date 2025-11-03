@@ -21,6 +21,14 @@ type Runtime interface {
 	CreateVolume(name string) error
 	// GetContainerStatus returns the status of a container
 	GetContainerStatus(name string) (string, error)
+	// PullImage pulls a container image
+	PullImage(image string) error
+	// GetImageID returns the image ID for a given image name
+	GetImageID(image string) (string, error)
+	// GetContainerLogs returns logs from a container
+	GetContainerLogs(name string, tail int) (string, error)
+	// RemoveVolume removes a volume
+	RemoveVolume(name string) error
 }
 
 // DockerRuntime implements Runtime for Docker
@@ -123,6 +131,69 @@ func (r *DockerRuntime) GetContainerStatus(name string) (string, error) {
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// PullImage pulls a container image
+func (r *DockerRuntime) PullImage(image string) error {
+	// #nosec G204 — image name is validated before use
+	cmd := exec.Command("docker", "pull", image)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to pull image %s: %w, stderr: %s", image, err, stderr.String())
+	}
+	return nil
+}
+
+// GetImageID returns the image ID for a given image name
+func (r *DockerRuntime) GetImageID(image string) (string, error) {
+	// #nosec G204 — image name is validated before use
+	cmd := exec.Command("docker", "inspect", "-f", "{{.Id}}", image)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get image ID: %w, stderr: %s", err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// GetContainerLogs returns logs from a container
+func (r *DockerRuntime) GetContainerLogs(name string, tail int) (string, error) {
+	args := []string{"logs"}
+	if tail > 0 {
+		args = append(args, "--tail", fmt.Sprintf("%d", tail))
+	}
+	args = append(args, name)
+
+	// #nosec G204 — container name is validated before use
+	cmd := exec.Command("docker", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get container logs: %w, stderr: %s", err, stderr.String())
+	}
+
+	return stdout.String(), nil
+}
+
+// RemoveVolume removes a volume
+func (r *DockerRuntime) RemoveVolume(name string) error {
+	// #nosec G204 — volume name is validated before use
+	cmd := exec.Command("docker", "volume", "rm", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		// Volume might not exist or might be in use - log but don't fail
+		return fmt.Errorf("failed to remove volume %s: %w, stderr: %s", name, err, stderr.String())
+	}
+	return nil
 }
 
 // DetectRuntime detects and returns the available container runtime

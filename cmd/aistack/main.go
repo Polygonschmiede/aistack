@@ -41,6 +41,12 @@ func main() {
 		case "status":
 			runStatus()
 			return
+		case "update":
+			runServiceCommand("update")
+			return
+		case "logs":
+			runServiceCommand("logs")
+			return
 		case "gpu-check":
 			runGPUCheck()
 			return
@@ -224,6 +230,32 @@ func runServiceCommand(command string) {
 			os.Exit(1)
 		}
 		fmt.Printf("Service %s stopped successfully\n", serviceName)
+	case "update":
+		fmt.Printf("Updating service: %s\n", serviceName)
+		fmt.Println("This will pull the latest image and restart the service.")
+		fmt.Println("Health checks will be performed and rollback will occur on failure.")
+		fmt.Println()
+		if err := service.Update(); err != nil {
+			fmt.Fprintf(os.Stderr, "\n❌ Update failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("\n✓ Service %s updated successfully\n", serviceName)
+	case "logs":
+		// Default to last 100 lines if no tail parameter specified
+		tail := 100
+		if len(os.Args) >= 4 {
+			if _, err := fmt.Sscanf(os.Args[3], "%d", &tail); err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid tail count: %s\n", os.Args[3])
+				os.Exit(1)
+			}
+		}
+		fmt.Printf("=== Logs for %s (last %d lines) ===\n\n", serviceName, tail)
+		logs, err := service.Logs(tail)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting logs: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(logs)
 	}
 }
 
@@ -582,6 +614,8 @@ Usage:
   aistack install <service>        Install a specific service (ollama, openwebui, localai)
   aistack start <service>          Start a service
   aistack stop <service>           Stop a service
+  aistack update <service>         Update a service to latest version (with rollback)
+  aistack logs <service> [lines]   Show service logs (default: 100 lines)
   aistack status                   Show status of all services
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack metrics-test             Test metrics collection (CPU/GPU)

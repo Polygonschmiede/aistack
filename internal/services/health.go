@@ -15,6 +15,11 @@ const (
 	HealthRed    HealthStatus = "red"
 )
 
+// HealthChecker is an interface for performing health checks
+type HealthChecker interface {
+	Check() (HealthStatus, error)
+}
+
 // HealthCheck represents a health check configuration
 type HealthCheck struct {
 	URL            string

@@ -396,3 +396,64 @@
   - ✓ Strukturiertes Logging für alle WoL-Events (wol.detect.*, wol.send.*)
   - ⏳ Story T-016 (Teil 2): HTTP WoL-Relay Server als optional markiert (nicht implementiert)
   - Hinweis: ethtool erforderlich für WoL-Detection und -Konfiguration auf Linux-Systemen
+
+## 2025-11-03 17:00 CET — EP-008 Implementation (Service: Ollama Orchestration)
+- **Aufgabe:** EP-008 "Service: Ollama Orchestration" vollständig implementieren, inklusive Update & Rollback-Funktionalität für alle Services.
+- **Vorgehen:**
+  - Runtime erweitert (`internal/services/runtime.go`):
+    - `PullImage()`: Docker Image Pull für Updates
+    - `GetImageID()`: Image ID Abfrage für Rollback-Tracking
+    - `GetContainerLogs()`: Log-Retrieval mit konfigurierbarem Tail
+    - `RemoveVolume()`: Volume-Removal für vollständiges Service-Cleanup
+  - Service Updater implementiert (`internal/services/updater.go`, Story T-018):
+    - `UpdatePlan` Struktur für Update-Tracking und Rollback-Informationen
+    - `ServiceUpdater` mit automatischem Rollback bei Health-Check-Failures
+    - Image Pull → Health Validation → Swap oder Rollback Workflow
+    - State-Persistierung nach `/var/lib/aistack/{service}_update_plan.json`
+    - Strukturiertes Logging: service.update.{start|pull|restart|health_check|success|health_failed|rollback}
+  - HealthChecker Interface eingeführt (`internal/services/health.go`):
+    - Interface für testbare Health-Checks
+    - HealthCheck Struct erfüllt Interface mit Check() Methode
+  - Service Interface erweitert (`internal/services/service.go`):
+    - `Update()` für Service-Updates mit Rollback
+    - `Logs(tail int)` für Log-Retrieval
+    - BaseService mit Default-Implementierungen
+    - Volume-Removal in `Remove()` implementiert
+  - Ollama Service erweitert (`internal/services/ollama.go`, Story T-017, T-018):
+    - Update-Funktionalität mit `ollama/ollama:latest` Image
+    - ServiceUpdater Integration mit Health-Validation
+    - AISTACK_STATE_DIR Environment-Support
+  - OpenWebUI & LocalAI Services erweitert:
+    - `ghcr.io/open-webui/open-webui:main` für OpenWebUI
+    - `quay.io/go-skynet/local-ai:latest` für LocalAI
+    - Identische Update & Rollback-Logik wie Ollama
+  - CLI-Integration (`cmd/aistack/main.go`):
+    - `aistack update <service>`: Update mit automatischem Rollback bei Fehler
+    - `aistack logs <service> [lines]`: Log-Ausgabe (default: 100 Zeilen)
+    - Benutzerfreundliche Ausgabe mit Progress-Informationen
+    - Help-Text mit neuen Befehlen erweitert
+  - Comprehensive Unit Tests (`updater_test.go`):
+    - `TestServiceUpdater_Update_NewImage`: Erfolgreicher Update-Workflow
+    - `TestServiceUpdater_Update_HealthFails`: Rollback bei Health-Check-Failure
+    - `TestServiceUpdater_Update_NoChange`: Handling von Image-Duplikaten
+    - `TestLoadUpdatePlan_NotExists`: Graceful handling nicht vorhandener Plans
+    - MockHealthCheck mit configurable Pass/Fail und Call-Counting
+    - MockRuntime erweitert mit PullImage, GetImageID, GetContainerLogs, RemoveVolume
+  - Testing & Validation:
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/services/...`: Alle 25 Service-Tests erfolgreich (17.4s)
+    - ✓ `./dist/aistack help`: Update und Logs Befehle dokumentiert
+    - ✓ MockRuntime vollständig implementiert für alle neuen Runtime-Methoden
+- **Status:** Abgeschlossen — EP-008 implementiert. DoD erfüllt:
+  - ✓ Story T-017: Ollama Lifecycle Commands (install/start/stop/remove bereits in EP-003)
+  - ✓ Story T-018: Ollama Update & Rollback mit Health-Gating
+  - ✓ CLI-Befehle: update <service>, logs <service> [lines]
+  - ✓ Update-Plan-Persistierung für Tracking und Debugging
+  - ✓ Automatischer Rollback bei Health-Check-Failures
+  - ✓ Image-Change-Detection (kein unnötiger Restart bei gleichem Image)
+  - ✓ 5-Sekunden Health-Check-Delay nach Service-Restart
+  - ✓ Strukturiertes Logging für alle Update-Events
+  - ✓ Unit-Tests mit >80% Coverage-Ziel
+  - ✓ Graceful Degradation und Error-Handling
+  - ✓ Alle Services (Ollama, OpenWebUI, LocalAI) mit Update-Funktionalität
+  - Hinweis: Docker erforderlich für Image-Pull und Container-Operations

@@ -7,16 +7,20 @@ import (
 
 // MockRuntime is a mock implementation of Runtime for testing
 type MockRuntime struct {
-	networks  map[string]bool
-	volumes   map[string]bool
-	isRunning bool
+	networks   map[string]bool
+	volumes    map[string]bool
+	isRunning  bool
+	imageID    string
+	newImageID string
 }
 
 func NewMockRuntime() *MockRuntime {
 	return &MockRuntime{
-		networks:  make(map[string]bool),
-		volumes:   make(map[string]bool),
-		isRunning: true,
+		networks:   make(map[string]bool),
+		volumes:    make(map[string]bool),
+		isRunning:  true,
+		imageID:    "sha256:mock123",
+		newImageID: "sha256:mock456",
 	}
 }
 
@@ -44,6 +48,25 @@ func (m *MockRuntime) ComposeDown(composeFile string) error {
 
 func (m *MockRuntime) GetContainerStatus(name string) (string, error) {
 	return "running", nil
+}
+
+func (m *MockRuntime) PullImage(image string) error {
+	// Simulate image pull by updating imageID to newImageID
+	m.imageID = m.newImageID
+	return nil
+}
+
+func (m *MockRuntime) GetImageID(image string) (string, error) {
+	return m.imageID, nil
+}
+
+func (m *MockRuntime) GetContainerLogs(name string, tail int) (string, error) {
+	return "mock log output\nline 2\nline 3", nil
+}
+
+func (m *MockRuntime) RemoveVolume(name string) error {
+	delete(m.volumes, name)
+	return nil
 }
 
 func TestNetworkManager_EnsureNetwork(t *testing.T) {
