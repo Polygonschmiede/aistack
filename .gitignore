@@ -272,3 +272,5 @@ cython_debug/
 .github
 .codex
 
+/.gocache/
+/.golangci-lint-cache/

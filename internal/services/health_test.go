@@ -1,15 +1,18 @@
 package services
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
 	"time"
 )
 
 func TestHealthCheck_Check_Success(t *testing.T) {
 	// Create a test HTTP server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := startTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -32,7 +35,7 @@ func TestHealthCheck_Check_Success(t *testing.T) {
 
 func TestHealthCheck_Check_WrongStatus(t *testing.T) {
 	// Create a test HTTP server returning 500
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := startTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -55,7 +58,7 @@ func TestHealthCheck_Check_WrongStatus(t *testing.T) {
 
 func TestHealthCheck_Check_Timeout(t *testing.T) {
 	// Create a test HTTP server that delays response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := startTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -79,7 +82,7 @@ func TestHealthCheck_Check_Timeout(t *testing.T) {
 
 func TestHealthCheck_CheckWithRetries(t *testing.T) {
 	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := startTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		if callCount < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -109,6 +112,23 @@ func TestHealthCheck_CheckWithRetries(t *testing.T) {
 	}
 }
 
+func startTestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
+			t.Skipf("skipping HTTP server test: %v", err)
+		}
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(handler)
+	_ = server.Listener.Close()
+	server.Listener = ln
+	server.Start()
+	return server
+}
 func TestDefaultHealthCheck(t *testing.T) {
 	hc := DefaultHealthCheck("http://localhost:8080/health")
 

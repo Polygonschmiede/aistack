@@ -569,5 +569,7 @@
 - **Vorgehen:**
   - Shadowing-Warnungen beseitigt (`backend_binding_test.go`, `updater_test.go`, `tui/model.go`, `wol/detector.go`).
   - Staticcheck-SA5011 durch frühes `t.Fatal` in WoL-Tests entschärft und Health-Check-Defer angepasst.
+  - `golangci-lint` via `GOTOOLCHAIN=go1.22.6 go install ...` installiert und Cache-Pfade auf Workspace umgestellt.
+  - Health-Tests mit `startTestServer` gegen Sandbox-Netzwerksperren gehärtet; `go test ./...` läuft mit lokalem `.gocache` grün.
   - `gofmt` über alle geänderten Dateien ausgeführt.
-- **Status:** Abgeschlossen — Quellcode angepasst; `golangci-lint` lokal nicht verfügbar und `go test ./...` scheitert wegen defekter Stdlib im Sandbox-Go (fehlende Pakete wie `encoding/json`). Hinweise im Review mitgegeben.
+- **Status:** Abgeschlossen — Quellcode und Tooling in Ordnung; `golangci-lint run` nutzbar (meldet bestehende gosec/dupl-Funde aus Config), `go test ./...` erfolgreich durchgelaufen.
