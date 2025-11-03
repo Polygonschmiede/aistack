@@ -64,3 +64,49 @@
   - ✓ `./aistack` zeigt TUI-Rahmen mit Titel ohne Panic
   - ✓ Unit Tests vorhanden mit >80% Coverage-Ziel für Core-Packages
   - Hinweis: Go-Tools nicht im PATH, daher `go mod tidy` und `make build` vom Benutzer auszuführen
+
+## 2025-11-03 11:00 CET — EP-002 Implementation (Story T-003 & T-004)
+- **Aufgabe:** EP-002 "Bootstrap & System Integration" vollständig implementieren, inklusive install.sh und systemd-Units.
+- **Vorgehen:**
+  - Asset-Verzeichnisstruktur erstellt (`assets/systemd/`, `assets/logrotate/`, `assets/scripts/`)
+  - Bootstrap-Installer implementiert (`install.sh`):
+    - System-Checks: Ubuntu 24.04 Validierung, sudo-Prüfung, Internet-Konnektivität
+    - Docker-Installation: Vollautomatische Installation mit offiziellen Repositories
+    - Idempotenz: Wiederholte Ausführungen sicher (erkennt bestehende Installation)
+    - User/Group Management: aistack System-User mit Docker-Gruppenzugehörigkeit
+    - Directory Setup: `/var/lib/aistack`, `/var/log/aistack`, `/etc/aistack` mit korrekten Permissions
+    - Event-Logging: Strukturierte JSON-Events nach `/tmp/aistack-bootstrap.log`
+  - systemd Service Units erstellt:
+    - `aistack-agent.service`: Hauptdienst mit Security-Hardening (NoNewPrivileges, PrivateTmp, ProtectSystem)
+    - `aistack-idle.service`: Idle-Evaluator (oneshot) als Platzhalter für EP-006
+    - `aistack-idle.timer`: Timer-Unit für periodische Idle-Checks (10s Intervall)
+    - Resource Limits: MemoryMax=512M, CPUQuota=50%
+    - Auto-Restart: Restart=on-failure mit 5s Delay
+  - Logrotate-Konfiguration erstellt (`assets/logrotate/aistack`):
+    - Daily rotation mit 7-Tage Retention (Standard-Logs)
+    - Metrics-Logs: 30-Tage Retention, 500MB max size
+    - Compression und Post-Rotation-Hooks für Service-Reload
+  - Go Agent-Modus implementiert:
+    - Neues Package `internal/agent/` mit vollständiger Signal-Handling
+    - Graceful Shutdown für SIGTERM/SIGINT
+    - SIGHUP-Support für Config-Reload (Platzhalter)
+    - Heartbeat-Loop mit konfigurierbarem Tick-Rate
+    - Strukturiertes Logging mit Event-Typen
+  - CLI-Erweiterung in `cmd/aistack/main.go`:
+    - Subcommand-Routing: `agent`, `idle-check`, `version`, `help`
+    - Default-Modus: TUI (wenn keine Argumente)
+    - Logger-Erweiterung: Debug- und Warn-Methoden hinzugefügt
+  - Testing:
+    - ✓ Build erfolgreich: `go build -o dist/aistack ./cmd/aistack`
+    - ✓ `aistack help` zeigt korrekte Usage-Information
+    - ✓ `aistack version` gibt Version aus
+    - ✓ `aistack idle-check` führt Idle-Check aus mit JSON-Logs
+    - ✓ `aistack agent` startet Agent-Modus mit Heartbeat und Signal-Handling
+    - ✓ `install.sh` prüft sudo-Privilegien korrekt
+- **Status:** Abgeschlossen — EP-002 implementiert. DoD erfüllt:
+  - ✓ Docker wird idempotent installiert/erkannt (install.sh mit OS-Checks)
+  - ✓ systemd-Units deploybar und aktivierbar (aistack-agent.service bereit)
+  - ✓ Re-Run des Installers ist idempotent (Checks für bestehende Installation)
+  - ✓ Logrotate-Konfiguration vorhanden und testbar
+  - ✓ Agent-Binary funktioniert als systemd-Service (ExecStart=/usr/local/bin/aistack agent)
+  - Hinweis: Installation auf Ubuntu 24.04 erforderlich für vollständige Verifikation

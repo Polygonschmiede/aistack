@@ -59,9 +59,19 @@ func (l *Logger) Log(level Level, eventType, message string, payload map[string]
 	fmt.Fprintln(os.Stderr, string(data))
 }
 
+// Debug logs a debug-level event
+func (l *Logger) Debug(eventType, message string, payload map[string]interface{}) {
+	l.Log(LevelDebug, eventType, message, payload)
+}
+
 // Info logs an info-level event
 func (l *Logger) Info(eventType, message string, payload map[string]interface{}) {
 	l.Log(LevelInfo, eventType, message, payload)
+}
+
+// Warn logs a warn-level event
+func (l *Logger) Warn(eventType, message string, payload map[string]interface{}) {
+	l.Log(LevelWarn, eventType, message, payload)
 }
 
 // Error logs an error-level event

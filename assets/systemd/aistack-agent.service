@@ -1,0 +1,44 @@
+[Unit]
+Description=aistack Background Agent
+Documentation=https://github.com/polygonschmiede/aistack
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=aistack
+Group=aistack
+
+# Path to the aistack binary
+ExecStart=/usr/local/bin/aistack agent
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aistack /var/log/aistack
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aistack-agent
+
+# Working directory
+WorkingDirectory=/var/lib/aistack
+
+# Environment
+Environment="AISTACK_CONFIG=/etc/aistack/config.yaml"
+Environment="AISTACK_LOG_DIR=/var/log/aistack"
+
+[Install]
+WantedBy=multi-user.target
