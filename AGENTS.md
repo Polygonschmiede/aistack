@@ -17,6 +17,10 @@
 - Group related logic into focused packages; avoid cyclic imports and keep public APIs minimal.
 - Favor clear guard clauses over deeply nested conditionals; document non-obvious business rules with brief comments.
 - Avoid shadowing existing variables (especially `err`); if an `err` is already in scope, reuse it with `err = call()` or declare it once before loops instead of `if err := ...`—the `shadow` linter runs in CI.
+- Check every returned error, even from cleanup helpers (e.g. `Close`, `Remove`, `io.ReadAll`, `fmt.Scanln`); propagate or log them so `errcheck` stays green.
+- Break up functions before they exceed 15 branches; factor shared logic into helpers to satisfy `gocyclo` and avoid duplication (`dupl`).
+- Pull repeated literals (paths/status strings) into constants to keep `goconst` happy and centralize maintenance.
+- When creating directories, stick to permissions ≤0750 to appease `gosec` checks.
 
 ## Testing Guidelines
 - Use Go’s standard `testing` package with table-driven tests for input/output coverage.

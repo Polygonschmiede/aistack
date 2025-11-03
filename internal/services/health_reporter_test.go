@@ -189,8 +189,8 @@ func TestHealthReporter_SaveReport(t *testing.T) {
 	}
 
 	var loadedReport HealthReport
-	if err := json.Unmarshal(data, &loadedReport); err != nil {
-		t.Fatalf("Failed to unmarshal report: %v", err)
+	if unmarshalErr := json.Unmarshal(data, &loadedReport); unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal report: %v", unmarshalErr)
 	}
 
 	// Verify data

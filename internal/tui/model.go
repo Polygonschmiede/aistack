@@ -91,55 +91,106 @@ func (m Model) Init() tea.Cmd {
 // Update handles messages and updates the model
 // Story T-024: Enhanced with menu navigation
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			m.quitting = true
-			m.saveState()
-			return m, tea.Quit
-
-		case "esc":
-			if m.currentScreen != ScreenMenu {
-				m = m.returnToMenu()
-				m.saveState()
-			}
-
-		// Menu navigation (only on menu screen)
-		case "up", "k":
-			if m.currentScreen == ScreenMenu {
-				m = m.navigateUp()
-			}
-
-		case "down", "j":
-			if m.currentScreen == ScreenMenu {
-				m = m.navigateDown()
-			}
-
-		case "enter", " ":
-			if m.currentScreen == ScreenMenu {
-				m = m.selectMenuItem()
-				m.saveState()
-			}
-
-		// Number key shortcuts (work from any screen)
-		case "1", "2", "3", "4", "5", "6", "7", "?":
-			m = m.selectMenuByKey(msg.String())
-			m.saveState()
-
-		// Screen-specific actions
-		case "b":
-			if m.currentScreen == ScreenStatus {
-				m = m.toggleBackend()
-			}
-
-		case "r":
-			if m.currentScreen == ScreenStatus {
-				m = m.refresh()
-			}
-		}
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
 	}
+
+	if next, handled, cmd := m.handleQuitKeys(keyMsg.String()); handled {
+		return next, cmd
+	}
+
+	if next, handled := m.handleEscapeKey(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handleMenuNavigationKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handleMenuSelectionKey(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handleShortcutKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handleStatusScreenKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
 	return m, nil
+}
+
+func (m Model) handleQuitKeys(key string) (tea.Model, bool, tea.Cmd) {
+	switch key {
+	case "ctrl+c", "q":
+		m.quitting = true
+		m.saveState()
+		return m, true, tea.Quit
+	}
+	return m, false, nil
+}
+
+func (m Model) handleEscapeKey(key string) (tea.Model, bool) {
+	if key == "esc" && m.currentScreen != ScreenMenu {
+		m = m.returnToMenu()
+		m.saveState()
+		return m, true
+	}
+	return m, false
+}
+
+func (m Model) handleMenuNavigationKeys(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenMenu {
+		return m, false
+	}
+
+	switch key {
+	case "up", "k":
+		return m.navigateUp(), true
+	case "down", "j":
+		return m.navigateDown(), true
+	}
+	return m, false
+}
+
+func (m Model) handleMenuSelectionKey(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenMenu {
+		return m, false
+	}
+
+	if key == "enter" || key == " " {
+		updated := m.selectMenuItem()
+		updated.saveState()
+		return updated, true
+	}
+	return m, false
+}
+
+func (m Model) handleShortcutKeys(key string) (tea.Model, bool) {
+	switch key {
+	case "1", "2", "3", "4", "5", "6", "7", "?":
+		updated := m.selectMenuByKey(key)
+		updated.saveState()
+		return updated, true
+	}
+	return m, false
+}
+
+func (m Model) handleStatusScreenKeys(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenStatus {
+		return m, false
+	}
+
+	switch key {
+	case "b":
+		return m.toggleBackend(), true
+	case "r":
+		return m.refresh(), true
+	}
+	return m, false
 }
 
 // View renders the TUI

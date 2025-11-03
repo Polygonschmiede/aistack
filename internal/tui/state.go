@@ -64,7 +64,7 @@ func (m *UIStateManager) Load() (*UIState, error) {
 // Save saves the UI state to disk
 func (m *UIStateManager) Save(state *UIState) error {
 	// Ensure state directory exists
-	if err := os.MkdirAll(m.stateDir, 0755); err != nil {
+	if err := os.MkdirAll(m.stateDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
@@ -85,7 +85,12 @@ func (m *UIStateManager) Save(state *UIState) error {
 	}
 
 	if err := os.Rename(tmpPath, statePath); err != nil {
-		os.Remove(tmpPath) // Clean up temp file on error
+		if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			m.logger.Warn("tui.state.tmp_cleanup_failed", "Failed to remove temp state file", map[string]interface{}{
+				"error": removeErr.Error(),
+				"path":  tmpPath,
+			})
+		}
 		return fmt.Errorf("failed to rename state file: %w", err)
 	}
 

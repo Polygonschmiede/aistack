@@ -17,8 +17,8 @@ func TestLocalAIManager_List(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test model files
@@ -34,8 +34,8 @@ func TestLocalAIManager_List(t *testing.T) {
 	for _, tf := range testFiles {
 		path := filepath.Join(modelsDir, tf.name)
 		data := make([]byte, tf.size)
-		if err := os.WriteFile(path, data, 0644); err != nil {
-			t.Fatal(err)
+		if writeErr := os.WriteFile(path, data, 0644); writeErr != nil {
+			t.Fatal(writeErr)
 		}
 	}
 
@@ -78,8 +78,8 @@ func TestLocalAIManager_ListEmptyDirectory(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	logger := logging.NewLogger(logging.LevelInfo)
@@ -125,26 +125,26 @@ func TestLocalAIManager_Delete(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test model file
 	modelPath := filepath.Join(modelsDir, "test-model.gguf")
-	if err := os.WriteFile(modelPath, []byte("test data"), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(modelPath, []byte("test data"), 0644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	logger := logging.NewLogger(logging.LevelInfo)
 	manager := NewLocalAIManager(tmpDir, modelsDir, logger)
 
 	// Delete model
-	if err := manager.Delete("test-model.gguf"); err != nil {
-		t.Fatalf("Failed to delete model: %v", err)
+	if delErr := manager.Delete("test-model.gguf"); delErr != nil {
+		t.Fatalf("Failed to delete model: %v", delErr)
 	}
 
 	// Verify file is gone
-	if _, err := os.Stat(modelPath); !os.IsNotExist(err) {
+	if _, statErr := os.Stat(modelPath); !os.IsNotExist(statErr) {
 		t.Errorf("Model file should not exist after delete")
 	}
 }
@@ -157,8 +157,8 @@ func TestLocalAIManager_DeleteNonExistent(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	logger := logging.NewLogger(logging.LevelInfo)
@@ -179,14 +179,14 @@ func TestLocalAIManager_SyncState(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test model file
 	modelPath := filepath.Join(modelsDir, "sync-test.gguf")
-	if err := os.WriteFile(modelPath, make([]byte, 1024), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(modelPath, make([]byte, 1024), 0644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	logger := logging.NewLogger(logging.LevelInfo)
@@ -224,8 +224,8 @@ func TestLocalAIManager_GetStats(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test model files
@@ -240,8 +240,8 @@ func TestLocalAIManager_GetStats(t *testing.T) {
 
 	for _, tf := range testFiles {
 		path := filepath.Join(modelsDir, tf.name)
-		if err := os.WriteFile(path, make([]byte, tf.size), 0644); err != nil {
-			t.Fatal(err)
+		if writeErr := os.WriteFile(path, make([]byte, tf.size), 0644); writeErr != nil {
+			t.Fatal(writeErr)
 		}
 	}
 
@@ -280,8 +280,8 @@ func TestLocalAIManager_EvictOldest(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test model files with different modification times
@@ -298,12 +298,12 @@ func TestLocalAIManager_EvictOldest(t *testing.T) {
 
 	for _, tf := range testFiles {
 		path := filepath.Join(modelsDir, tf.name)
-		if err := os.WriteFile(path, make([]byte, tf.size), 0644); err != nil {
-			t.Fatal(err)
+		if writeErr := os.WriteFile(path, make([]byte, tf.size), 0644); writeErr != nil {
+			t.Fatal(writeErr)
 		}
 		// Set modification time
-		if err := os.Chtimes(path, tf.modTime, tf.modTime); err != nil {
-			t.Fatal(err)
+		if chtimesErr := os.Chtimes(path, tf.modTime, tf.modTime); chtimesErr != nil {
+			t.Fatal(chtimesErr)
 		}
 	}
 
@@ -326,7 +326,7 @@ func TestLocalAIManager_EvictOldest(t *testing.T) {
 
 	// Verify file is gone
 	oldestPath := filepath.Join(modelsDir, "oldest.gguf")
-	if _, err := os.Stat(oldestPath); !os.IsNotExist(err) {
+	if _, statErr := os.Stat(oldestPath); !os.IsNotExist(statErr) {
 		t.Errorf("Evicted model file should not exist")
 	}
 
@@ -349,14 +349,14 @@ func TestLocalAIManager_UpdateLastUsed(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	modelsDir := filepath.Join(tmpDir, "models")
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(modelsDir, 0755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test model file
 	modelPath := filepath.Join(modelsDir, "test.gguf")
-	if err := os.WriteFile(modelPath, []byte("test"), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(modelPath, []byte("test"), 0644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	logger := logging.NewLogger(logging.LevelInfo)

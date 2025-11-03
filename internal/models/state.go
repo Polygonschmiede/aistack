@@ -39,14 +39,14 @@ func (m *StateManager) getStatePath() string {
 }
 
 // Load loads the models state from disk
-func (m *StateManager) Load() (*ModelsState, error) {
+func (m *StateManager) Load() (*State, error) {
 	statePath := m.getStatePath()
 
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Return empty state if file doesn't exist
-			return &ModelsState{
+			return &State{
 				Provider: m.provider,
 				Items:    []ModelInfo{},
 				Updated:  time.Now().UTC(),
@@ -55,7 +55,7 @@ func (m *StateManager) Load() (*ModelsState, error) {
 		return nil, fmt.Errorf("failed to read state file: %w", err)
 	}
 
-	var state ModelsState
+	var state State
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
@@ -64,9 +64,9 @@ func (m *StateManager) Load() (*ModelsState, error) {
 }
 
 // Save saves the models state to disk
-func (m *StateManager) Save(state *ModelsState) error {
+func (m *StateManager) Save(state *State) error {
 	// Ensure state directory exists
-	if err := os.MkdirAll(m.stateDir, 0755); err != nil {
+	if err := os.MkdirAll(m.stateDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
@@ -88,7 +88,12 @@ func (m *StateManager) Save(state *ModelsState) error {
 	}
 
 	if err := os.Rename(tmpPath, statePath); err != nil {
-		os.Remove(tmpPath) // Clean up temp file on error
+		if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			m.logger.Warn("models.state.tmp_cleanup_failed", "Failed to remove temp state file", map[string]interface{}{
+				"error": removeErr.Error(),
+				"path":  tmpPath,
+			})
+		}
 		return fmt.Errorf("failed to rename state file: %w", err)
 	}
 
@@ -216,7 +221,7 @@ func (m *StateManager) GetOldestModels() ([]ModelInfo, error) {
 
 // Clear removes all models from the state
 func (m *StateManager) Clear() error {
-	state := &ModelsState{
+	state := &State{
 		Provider: m.provider,
 		Items:    []ModelInfo{},
 		Updated:  time.Now().UTC(),

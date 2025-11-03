@@ -838,9 +838,13 @@
   - ⏳ Retry-Backoff, Circuit-Breaker (Future Enhancement)
 
 ## 2025-11-03 22:09 CET — Linting-Fixes & Agent-Guidance
-- **Aufgabe:** Govet-Schattenvariablen in Tests und Services beheben, dazu Agent-Anleitungen anpassen.
+- **Aufgabe:** Govet-/golangci-lint-Befunde (shadow, dupl, errcheck, gocyclo, goconst, gosec) beseitigen und Agent-Guidelines nachziehen.
 - **Durchgeführt:**
-  - Shadow-Warnungen in betroffenen Go-Tests und `internal/services/repair.go` mit `err = call()`-Pattern beseitigt.
-  - `AGENTS.md` und `CLAUDE.md` um Shadow-Lint-Hinweis ergänzt.
-- **Tests:** `go test ./...` (fehlt Zugriff auf `$HOME/Library/Caches/go-build`, daher im Sandbox-Modus fehlgeschlagen).
-- **Status:** Abgeschlossen — Lint-Fixes erledigt, Agent-Dokus angepasst; Tests außerhalb der Sandbox erneut ausführen.
+  - Gemeinsame Evict-Logik zentralisiert (`internal/models/evict.go`) und `ModelsState` → `State` umbenannt, damit `dupl`/`revive` sauber laufen.
+  - `OllamaManager.Download` in Streams/Helper zerlegt, Response-Close/Error-Handling ergänzt (errcheck) und Progress-Emitter extrahiert (gocyclo reduziert).
+  - Service-CLI-Befehle in Modul-Hilfsfunktionen ausgelagert (`runServiceCommand`) und konstante Strings/Model-Pfade eingeführt (`goconst`).
+  - UI-Update-Logik in schlanke Handler aufgeteilt (`internal/tui/model.go`) und Directory-ACLs auf `0o750` begrenzt (`gosec`).
+  - Tests und Services ohne `if err := ...`-Shadowing überarbeitet; neue Helper für `Close`/`Remove`-Fehlerlogging.
+  - `AGENTS.md`/`CLAUDE.md` mit Lint-Regeln zu Shadow, errcheck, gocyclo, goconst, gosec erweitert.
+- **Tests:** `golangci-lint run --fix` lokal nicht erneut ausführbar; `go test ./...` scheitert weiter am sandboxed `$HOME/Library/Caches/go-build` (Operation not permitted).
+- **Status:** Abgeschlossen — Code lint-frei vorbereitet; Tests/Lint außerhalb der Sandbox bitte gegenprüfen.

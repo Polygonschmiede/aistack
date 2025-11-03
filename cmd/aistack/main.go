@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,10 @@ import (
 	"aistack/internal/wol/relay"
 )
 
-const version = "0.1.0-dev"
+const (
+	version           = "0.1.0-dev"
+	localAIModelsPath = "/var/lib/aistack/volumes/localai_models"
+)
 
 func main() {
 	if len(os.Args) <= 1 {
@@ -218,81 +222,106 @@ func runServiceCommand(command string) {
 		os.Exit(1)
 	}
 
+	if err := executeServiceAction(command, serviceName, service, manager, os.Args[3:]); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func executeServiceAction(command, serviceName string, service services.Service, manager *services.Manager, extraArgs []string) error {
 	switch command {
 	case "start":
-		fmt.Printf("Starting service: %s\n", serviceName)
-		if err := service.Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error starting service: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Service %s started successfully\n", serviceName)
+		return handleServiceStart(serviceName, service)
 	case "stop":
-		fmt.Printf("Stopping service: %s\n", serviceName)
-		if err := service.Stop(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Service %s stopped successfully\n", serviceName)
+		return handleServiceStop(serviceName, service)
 	case "update":
-		fmt.Printf("Updating service: %s\n", serviceName)
-		fmt.Println("This will pull the latest image and restart the service.")
-		fmt.Println("Health checks will be performed and rollback will occur on failure.")
-		fmt.Println()
-		if err := service.Update(); err != nil {
-			fmt.Fprintf(os.Stderr, "\n❌ Update failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("\n✓ Service %s updated successfully\n", serviceName)
+		return handleServiceUpdate(serviceName, service)
 	case "logs":
-		// Default to last 100 lines if no tail parameter specified
-		tail := 100
-		if len(os.Args) >= 4 {
-			if _, err := fmt.Sscanf(os.Args[3], "%d", &tail); err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid tail count: %s\n", os.Args[3])
-				os.Exit(1)
-			}
-		}
-		fmt.Printf("=== Logs for %s (last %d lines) ===\n\n", serviceName, tail)
-		logs, err := service.Logs(tail)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting logs: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Print(logs)
+		return handleServiceLogs(serviceName, service, extraArgs)
 	case "repair":
-		// Story T-026: Repair-Command für einzelne Services
-		fmt.Printf("Repairing service: %s\n", serviceName)
-		fmt.Println("This will stop, remove, and recreate the service.")
-		fmt.Println("Volumes will be preserved. Health checks will validate the repair.")
-		fmt.Println()
+		return handleServiceRepair(serviceName, manager)
+	default:
+		return fmt.Errorf("unknown service command: %s", command)
+	}
+}
 
-		result, err := manager.RepairService(serviceName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "\n❌ Repair failed: %v\n", err)
-			os.Exit(1)
-		}
+func handleServiceStart(serviceName string, service services.Service) error {
+	fmt.Printf("Starting service: %s\n", serviceName)
+	if err := service.Start(); err != nil {
+		return fmt.Errorf("Error starting service: %w", err)
+	}
+	fmt.Printf("Service %s started successfully\n", serviceName)
+	return nil
+}
 
-		// Display result
-		fmt.Println()
-		fmt.Println("=== Repair Result ===")
-		fmt.Printf("Service: %s\n", result.ServiceName)
-		fmt.Printf("Health Before: %s\n", result.HealthBefore)
-		fmt.Printf("Health After:  %s\n", result.HealthAfter)
+func handleServiceStop(serviceName string, service services.Service) error {
+	fmt.Printf("Stopping service: %s\n", serviceName)
+	if err := service.Stop(); err != nil {
+		return fmt.Errorf("Error stopping service: %w", err)
+	}
+	fmt.Printf("Service %s stopped successfully\n", serviceName)
+	return nil
+}
 
-		if result.SkippedReason != "" {
-			fmt.Printf("\nℹ  Skipped: %s\n", result.SkippedReason)
-		}
+func handleServiceUpdate(serviceName string, service services.Service) error {
+	fmt.Printf("Updating service: %s\n", serviceName)
+	fmt.Println("This will pull the latest image and restart the service.")
+	fmt.Println("Health checks will be performed and rollback will occur on failure.")
+	fmt.Println()
+	if err := service.Update(); err != nil {
+		return fmt.Errorf("\n❌ Update failed: %w", err)
+	}
+	fmt.Printf("\n✓ Service %s updated successfully\n", serviceName)
+	return nil
+}
 
-		if result.Success {
-			fmt.Printf("\n✓ Service %s repaired successfully\n", serviceName)
-		} else {
-			fmt.Fprintf(os.Stderr, "\n❌ Repair completed but service is not healthy\n")
-			if result.ErrorMessage != "" {
-				fmt.Fprintf(os.Stderr, "   Error: %s\n", result.ErrorMessage)
-			}
-			os.Exit(1)
+func handleServiceLogs(serviceName string, service services.Service, extraArgs []string) error {
+	tail := 100
+	if len(extraArgs) > 0 {
+		if _, err := fmt.Sscanf(extraArgs[0], "%d", &tail); err != nil {
+			return fmt.Errorf("Invalid tail count: %s", extraArgs[0])
 		}
 	}
+	fmt.Printf("=== Logs for %s (last %d lines) ===\n\n", serviceName, tail)
+	logs, err := service.Logs(tail)
+	if err != nil {
+		return fmt.Errorf("Error getting logs: %w", err)
+	}
+	fmt.Print(logs)
+	return nil
+}
+
+func handleServiceRepair(serviceName string, manager *services.Manager) error {
+	fmt.Printf("Repairing service: %s\n", serviceName)
+	fmt.Println("This will stop, remove, and recreate the service.")
+	fmt.Println("Volumes will be preserved. Health checks will validate the repair.")
+	fmt.Println()
+
+	result, err := manager.RepairService(serviceName)
+	if err != nil {
+		return fmt.Errorf("\n❌ Repair failed: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Println("=== Repair Result ===")
+	fmt.Printf("Service: %s\n", result.ServiceName)
+	fmt.Printf("Health Before: %s\n", result.HealthBefore)
+	fmt.Printf("Health After:  %s\n", result.HealthAfter)
+
+	if result.SkippedReason != "" {
+		fmt.Printf("\nℹ  Skipped: %s\n", result.SkippedReason)
+	}
+
+	if result.Success {
+		fmt.Printf("\n✓ Service %s repaired successfully\n", serviceName)
+		return nil
+	}
+
+	message := "\n❌ Repair completed but service is not healthy"
+	if result.ErrorMessage != "" {
+		message += "\n   Error: " + result.ErrorMessage
+	}
+	return errors.New(message)
 }
 
 // runRemove removes a service (optionally purging data volumes)
@@ -1129,19 +1158,18 @@ func runModelsList() {
 	switch provider {
 	case models.ProviderOllama:
 		manager := models.NewOllamaManager(stateDir, logger)
-		if err := manager.SyncState(); err != nil {
+		if syncErr := manager.SyncState(); syncErr != nil {
 			logger.Warn("models.list.sync_failed", "Failed to sync state", map[string]interface{}{
-				"error": err.Error(),
+				"error": syncErr.Error(),
 			})
 		}
 		modelsList, err = manager.List()
 	case models.ProviderLocalAI:
-		// LocalAI models directory is typically in the volume
-		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		modelsPath := localAIModelsPath
 		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
-		if err := manager.SyncState(); err != nil {
+		if syncErr := manager.SyncState(); syncErr != nil {
 			logger.Warn("models.list.sync_failed", "Failed to sync state", map[string]interface{}{
-				"error": err.Error(),
+				"error": syncErr.Error(),
 			})
 		}
 		modelsList, err = manager.List()
@@ -1271,7 +1299,10 @@ func runModelsDelete() {
 	fmt.Print("Are you sure? (yes/no): ")
 
 	var response string
-	fmt.Scanln(&response)
+	if _, scanErr := fmt.Scanln(&response); scanErr != nil && !errors.Is(scanErr, io.EOF) {
+		fmt.Fprintf(os.Stderr, "Failed to read confirmation: %v\n", scanErr)
+		os.Exit(1)
+	}
 
 	if strings.ToLower(response) != "yes" {
 		fmt.Println("Aborted.")
@@ -1284,7 +1315,7 @@ func runModelsDelete() {
 		manager := models.NewOllamaManager(stateDir, logger)
 		err = manager.Delete(modelName)
 	case models.ProviderLocalAI:
-		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		modelsPath := localAIModelsPath
 		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
 		err = manager.Delete(modelName)
 	}
@@ -1325,7 +1356,7 @@ func runModelsStats() {
 		manager := models.NewOllamaManager(stateDir, logger)
 		stats, err = manager.GetStats()
 	case models.ProviderLocalAI:
-		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		modelsPath := localAIModelsPath
 		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
 		stats, err = manager.GetStats()
 	}
@@ -1376,7 +1407,7 @@ func runModelsEvictOldest() {
 		manager := models.NewOllamaManager(stateDir, logger)
 		evicted, err = manager.EvictOldest()
 	case models.ProviderLocalAI:
-		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		modelsPath := localAIModelsPath
 		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
 		evicted, err = manager.EvictOldest()
 	}

@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const serviceStateRunning = "running"
+
 // Service represents a container service
 type Service interface {
 	Name() string
@@ -208,7 +210,7 @@ func (s *BaseService) Status() (ServiceStatus, error) {
 
 	// Get health status
 	health := HealthRed
-	if state == "running" {
+	if state == serviceStateRunning {
 		healthStatus, err := s.Health()
 		if err == nil {
 			health = healthStatus

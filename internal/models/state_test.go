@@ -20,7 +20,7 @@ func TestStateManager_SaveAndLoad(t *testing.T) {
 	manager := NewStateManager(tmpDir, ProviderOllama, logger)
 
 	// Create test state
-	state := &ModelsState{
+	state := &State{
 		Provider: ProviderOllama,
 		Items: []ModelInfo{
 			{
@@ -344,7 +344,7 @@ func TestStateManager_AtomicWrite(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
 	manager := NewStateManager(tmpDir, ProviderOllama, logger)
 
-	state := &ModelsState{
+	state := &State{
 		Provider: ProviderOllama,
 		Items: []ModelInfo{
 			{Name: "test", Size: 100, LastUsed: time.Now().UTC()},

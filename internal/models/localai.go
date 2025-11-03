@@ -154,39 +154,7 @@ func (m *LocalAIManager) GetStats() (*CacheStats, error) {
 // EvictOldest removes the oldest model to free up space
 // Story T-023: Evict oldest functionality
 func (m *LocalAIManager) EvictOldest() (*ModelInfo, error) {
-	// Sync state first
-	if err := m.SyncState(); err != nil {
-		return nil, err
-	}
-
-	oldestModels, err := m.stateManager.GetOldestModels()
-	if err != nil {
-		return nil, err
-	}
-
-	if len(oldestModels) == 0 {
-		return nil, fmt.Errorf("no models to evict")
-	}
-
-	oldest := oldestModels[0]
-
-	m.logger.Info("model.evict.started", "Evicting oldest model", map[string]interface{}{
-		"model":     oldest.Name,
-		"last_used": oldest.LastUsed,
-		"size":      oldest.Size,
-	})
-
-	// Delete the model
-	if err := m.Delete(oldest.Name); err != nil {
-		return nil, fmt.Errorf("failed to delete oldest model: %w", err)
-	}
-
-	m.logger.Info("model.evict.completed", "Oldest model evicted", map[string]interface{}{
-		"model": oldest.Name,
-		"size":  oldest.Size,
-	})
-
-	return &oldest, nil
+	return evictOldestModel(m.SyncState, m.stateManager, m.Delete, m.logger)
 }
 
 // UpdateLastUsed updates the last used timestamp for a model

@@ -53,21 +53,30 @@ type ollamaPullProgress struct {
 	Error     string `json:"error,omitempty"`
 }
 
+func closeBody(body io.ReadCloser, logger *logging.Logger, context string) {
+	if err := body.Close(); err != nil {
+		logger.Warn("ollama.response.close_failed", "Failed to close HTTP response body", map[string]interface{}{
+			"context": context,
+			"error":   err.Error(),
+		})
+	}
+}
+
 // List returns all available Ollama models
 func (m *OllamaManager) List() ([]ModelInfo, error) {
 	resp, err := m.httpClient.Get(m.apiBase + "/api/tags")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list models: %w", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(resp.Body, m.logger, "list")
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ollama API returned status %d", resp.StatusCode)
 	}
 
 	var listResp ollamaListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&listResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&listResp); decodeErr != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", decodeErr)
 	}
 
 	models := make([]ModelInfo, len(listResp.Models))
@@ -127,68 +136,15 @@ func (m *OllamaManager) Download(modelName string, progressChan chan<- DownloadP
 		}
 		return fmt.Errorf("failed to pull model: %w", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(resp.Body, m.logger, "download")
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ollama API returned status %d", resp.StatusCode)
 	}
 
-	// Read progress stream
-	scanner := bufio.NewScanner(resp.Body)
-	var lastProgress ollamaPullProgress
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-
-		var progress ollamaPullProgress
-		if err := json.Unmarshal(line, &progress); err != nil {
-			m.logger.Warn("model.download.parse_error", "Failed to parse progress", map[string]interface{}{
-				"error": err.Error(),
-			})
-			continue
-		}
-
-		lastProgress = progress
-
-		// Send progress update
-		if progressChan != nil {
-			downloadProgress := DownloadProgress{
-				ModelName:       modelName,
-				BytesDownloaded: progress.Completed,
-				TotalBytes:      progress.Total,
-				Status:          "progress",
-			}
-
-			if progress.Total > 0 {
-				downloadProgress.Percentage = float64(progress.Completed) / float64(progress.Total) * 100
-			}
-
-			progressChan <- downloadProgress
-		}
-
-		// Check for errors
-		if progress.Error != "" {
-			m.logger.Error("model.download.failed", "Download failed", map[string]interface{}{
-				"model": modelName,
-				"error": progress.Error,
-			})
-			if progressChan != nil {
-				progressChan <- DownloadProgress{
-					ModelName: modelName,
-					Status:    "failed",
-					Error:     progress.Error,
-				}
-			}
-			return fmt.Errorf("download failed: %s", progress.Error)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		m.logger.Error("model.download.stream_error", "Stream error", map[string]interface{}{
-			"model": modelName,
-			"error": err.Error(),
-		})
-		return fmt.Errorf("stream error: %w", err)
+	lastProgress, err := m.consumeDownloadProgress(resp.Body, modelName, progressChan)
+	if err != nil {
+		return err
 	}
 
 	// Get final model info
@@ -202,9 +158,9 @@ func (m *OllamaManager) Download(modelName string, progressChan chan<- DownloadP
 		for _, model := range models {
 			if model.Name == modelName {
 				model.LastUsed = time.Now().UTC()
-				if err := m.stateManager.AddModel(model); err != nil {
+				if addErr := m.stateManager.AddModel(model); addErr != nil {
 					m.logger.Warn("model.download.state_update_failed", "Failed to update state", map[string]interface{}{
-						"error": err.Error(),
+						"error": addErr.Error(),
 					})
 				}
 				break
@@ -227,6 +183,76 @@ func (m *OllamaManager) Download(modelName string, progressChan chan<- DownloadP
 	}
 
 	return nil
+}
+
+func (m *OllamaManager) consumeDownloadProgress(body io.Reader, modelName string, progressChan chan<- DownloadProgress) (ollamaPullProgress, error) {
+	scanner := bufio.NewScanner(body)
+	var lastProgress ollamaPullProgress
+
+	for scanner.Scan() {
+		progress, ok := m.parseProgressLine(scanner.Bytes())
+		if !ok {
+			continue
+		}
+
+		lastProgress = progress
+		m.emitProgressEvent(progress, modelName, progressChan)
+
+		if progress.Error != "" {
+			m.logger.Error("model.download.failed", "Download failed", map[string]interface{}{
+				"model": modelName,
+				"error": progress.Error,
+			})
+			if progressChan != nil {
+				progressChan <- DownloadProgress{
+					ModelName: modelName,
+					Status:    "failed",
+					Error:     progress.Error,
+				}
+			}
+			return lastProgress, fmt.Errorf("download failed: %s", progress.Error)
+		}
+	}
+
+	if scanErr := scanner.Err(); scanErr != nil {
+		m.logger.Error("model.download.stream_error", "Stream error", map[string]interface{}{
+			"model": modelName,
+			"error": scanErr.Error(),
+		})
+		return lastProgress, fmt.Errorf("stream error: %w", scanErr)
+	}
+
+	return lastProgress, nil
+}
+
+func (m *OllamaManager) parseProgressLine(line []byte) (ollamaPullProgress, bool) {
+	var progress ollamaPullProgress
+	if unmarshalErr := json.Unmarshal(line, &progress); unmarshalErr != nil {
+		m.logger.Warn("model.download.parse_error", "Failed to parse progress", map[string]interface{}{
+			"error": unmarshalErr.Error(),
+		})
+		return ollamaPullProgress{}, false
+	}
+	return progress, true
+}
+
+func (m *OllamaManager) emitProgressEvent(progress ollamaPullProgress, modelName string, progressChan chan<- DownloadProgress) {
+	if progressChan == nil {
+		return
+	}
+
+	downloadProgress := DownloadProgress{
+		ModelName:       modelName,
+		BytesDownloaded: progress.Completed,
+		TotalBytes:      progress.Total,
+		Status:          "progress",
+	}
+
+	if progress.Total > 0 {
+		downloadProgress.Percentage = float64(progress.Completed) / float64(progress.Total) * 100
+	}
+
+	progressChan <- downloadProgress
 }
 
 // Delete removes a model
@@ -258,17 +284,20 @@ func (m *OllamaManager) Delete(modelName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to delete model: %w", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(resp.Body, m.logger, "delete")
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("ollama API returned status %d and failed to read body: %w", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("ollama API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	// Remove from state
-	if err := m.stateManager.RemoveModel(modelName); err != nil {
+	if removeErr := m.stateManager.RemoveModel(modelName); removeErr != nil {
 		m.logger.Warn("model.delete.state_update_failed", "Failed to update state", map[string]interface{}{
-			"error": err.Error(),
+			"error": removeErr.Error(),
 		})
 	}
 
@@ -328,37 +357,5 @@ func (m *OllamaManager) SyncState() error {
 // EvictOldest removes the oldest model to free up space
 // Story T-023: Evict oldest functionality
 func (m *OllamaManager) EvictOldest() (*ModelInfo, error) {
-	// Sync state first
-	if err := m.SyncState(); err != nil {
-		return nil, err
-	}
-
-	oldestModels, err := m.stateManager.GetOldestModels()
-	if err != nil {
-		return nil, err
-	}
-
-	if len(oldestModels) == 0 {
-		return nil, fmt.Errorf("no models to evict")
-	}
-
-	oldest := oldestModels[0]
-
-	m.logger.Info("model.evict.started", "Evicting oldest model", map[string]interface{}{
-		"model":     oldest.Name,
-		"last_used": oldest.LastUsed,
-		"size":      oldest.Size,
-	})
-
-	// Delete the model
-	if err := m.Delete(oldest.Name); err != nil {
-		return nil, fmt.Errorf("failed to delete oldest model: %w", err)
-	}
-
-	m.logger.Info("model.evict.completed", "Oldest model evicted", map[string]interface{}{
-		"model": oldest.Name,
-		"size":  oldest.Size,
-	})
-
-	return &oldest, nil
+	return evictOldestModel(m.SyncState, m.stateManager, m.Delete, m.logger)
 }

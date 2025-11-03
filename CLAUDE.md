@@ -24,6 +24,9 @@ aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI,
 - `golangci-lint run` - Run comprehensive linting (if configured)
 - `go mod tidy` - Clean up and verify dependencies
 - Lint strictly forbids variable shadowing (notably re-declaring `err` in inner scopes); reuse existing variables with plain assignment or declare them once to keep `shadow` happy.
+- Always check returned errors (including cleanup calls like `Close`, `Remove`, `ReadAll`, `Scanln`) so `errcheck` stays clean.
+- Factor shared code into helpers and keep cyclomatic complexity ≤15 to satisfy `dupl`/`gocyclo`; repeated literals (e.g. paths, status strings) belong in constants to placate `goconst`.
+- Directory creation must use permissions ≤0750 to avoid `gosec` G301 violations.
 
 ## Architecture Overview
 

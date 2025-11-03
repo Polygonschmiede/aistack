@@ -31,9 +31,9 @@ type ModelInfo struct {
 	LastUsed time.Time `json:"last_used"` // Last access timestamp
 }
 
-// ModelsState represents the overall model cache state
+// State represents the overall model cache state
 // Data Contract from EP-012: models_state.json
-type ModelsState struct {
+type State struct {
 	Provider Provider    `json:"provider"`
 	Items    []ModelInfo `json:"items"`
 	Updated  time.Time   `json:"updated"`
