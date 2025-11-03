@@ -1,0 +1,61 @@
+# aistack configuration example
+# System-wide: /etc/aistack/config.yaml
+# User-specific: ~/.aistack/config.yaml
+
+# Container runtime selection
+container_runtime: docker  # docker or podman
+
+# Installation profile
+# Options: minimal, standard-gpu (default), dev
+profile: standard-gpu
+
+# GPU exclusive locking
+gpu_lock: true
+
+# Idle detection settings
+idle:
+  # CPU idle threshold (percentage)
+  cpu_idle_threshold: 10
+
+  # GPU idle threshold (percentage)
+  gpu_idle_threshold: 5
+
+  # Sliding window for idle calculation (seconds)
+  window_seconds: 300
+
+  # Timeout before suspend (seconds)
+  idle_timeout_seconds: 1800  # 30 minutes
+
+# Power estimation
+power_estimation:
+  # Baseline system power consumption (watts)
+  baseline_watts: 50
+
+# Wake-on-LAN configuration
+wol:
+  # Network interface for WoL
+  interface: eth0
+
+  # MAC address of the interface
+  mac: "00:00:00:00:00:00"
+
+  # Optional: HTTP relay URL for remote wake
+  relay_url: ""
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log format: json, text
+  format: json
+
+# Model cache management
+models:
+  # Keep model caches when uninstalling services
+  keep_cache_on_uninstall: true
+
+# Update policy
+updates:
+  # Update mode: rolling (always latest) or pinned (use versions.lock)
+  mode: rolling
