@@ -335,3 +335,11 @@
   - ☑︎ Implementierung: Metrics-Logging & RAPL-Delta (`internal/agent/agent.go`, `internal/metrics/*`), Compose-Pfad-Resolver & YAML-Korrektur (`cmd/aistack/main.go`, `compose/openwebui.yaml`), Toolkit Dry-Run (`internal/gpu/toolkit.go`), Idle-State-Konfiguration & Inhibitor-Persistenz (`internal/idle/*`).
   - ☑︎ Validierung: `gofmt` über geänderte Dateien; `go test ./...` schlägt im Sandbox-Setup fehl (`package encoding/json is not in std`).
 - **Status:** Abgeschlossen — EP-005 bis EP-006 DoD erfüllt, EP-003/EP-004 orchestration & Detection stabilisiert; weitere Aufgaben siehe `quality.md` Repair Queue.
+
+## 2025-11-03 13:20 CET — Dokumentation an Code-Änderungen angleichen
+- **Aufgabe:** README, CLAUDE und Epics-Dokumentation an die neuen Umgebungsvariablen (Compose-Pfad, Log-Verzeichnis, Idle-State) und das dry-run Toolkit-Checking anpassen.
+- **Vorgehen:**
+  - ☑︎ README: Environment Overrides (`AISTACK_COMPOSE_DIR`, `AISTACK_LOG_DIR`, `AISTACK_STATE_DIR`).
+  - ☑︎ CLAUDE: Metrics/Idle-Abschnitte aktualisiert (RAPL-Deltas, kein CPU-Temp, Log/State Overrides).
+  - ☑︎ `docs/features/epics.md`: Hinweise zu Log-/State-Fallbacks ergänzt.
+- **Status:** Abgeschlossen — Dokumentation spiegelt aktuellen Funktionsumfang; offene Aufgaben bleiben im Repair Queue (`quality.md`).

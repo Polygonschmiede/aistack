@@ -64,11 +64,11 @@ The codebase is designed to grow into these modules (currently minimal):
 
 **Configuration**: YAML-based (`/etc/aistack/config.yaml` + `~/.aistack/config.yaml`)
 
-**Logging**: Structured JSON logs under `/var/log/aistack/`, logrotate-managed
+**Logging**: Structured JSON logs under `/var/log/aistack/` by default (override with `AISTACK_LOG_DIR`), logrotate-managed
 
 **Testing**: Table-driven tests, interfaces for mocking external dependencies
 
-**Metrics Collection**: JSONL-based metrics logging with CPU/GPU sampling
+**Metrics Collection**: JSONL-based metrics logging with CPU/GPU sampling and RAPL delta power estimates
 
 ### Metrics Architecture
 
@@ -76,9 +76,8 @@ The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for 
 
 **CPU Metrics** (`cpu_collector.go`):
 - `/proc/stat` parsing for CPU utilization (delta-based calculation)
-- RAPL power measurement via `/sys/class/powercap/intel-rapl/`
-- CPU temperature from `/sys/class/thermal/thermal_zone0/temp`
-- Graceful degradation when RAPL unavailable (non-Intel, macOS)
+- RAPL power measurement via `/sys/class/powercap/intel-rapl/` with energy delta tracking
+- Graceful degradation when RAPL unavailable or disabled (`MetricsConfig.EnableCPUPower`)
 
 **GPU Metrics** (`gpu_collector.go`):
 - NVML-based metrics: GPU/Memory utilization, power usage, temperature
@@ -95,8 +94,7 @@ The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for 
 **Data Format** (`writer.go`):
 - JSONL (JSON Lines) format for append-only logging
 - One JSON object per line with timestamp
-- Optional fields (omitempty) for unavailable metrics
-- File locking for concurrent-safe writes
+- Optional fields (`omitempty`) for unavailable metrics
 
 **Sample Structure**:
 ```json
@@ -113,10 +111,10 @@ The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for 
 ```
 
 **Testing Pattern**:
-- MockNVML for GPU metrics testing without hardware
+- MockNVML for GPU/metrics testing without hardware
 - Local mock implementations per package (avoids test file exports)
 - Table-driven tests for various hardware availability scenarios
-- Graceful degradation verified on macOS (no /proc/stat, RAPL, NVML)
+- Graceful degradation verified on macOS (no `/proc/stat`, RAPL, NVML)
 
 ### Idle Engine & Autosuspend Architecture
 
@@ -149,7 +147,7 @@ The idle detection subsystem (`internal/idle/`) provides intelligent system susp
 - ShouldSuspend() decision gate checks all conditions
 
 **State Persistence** (`state.go`):
-- JSON format saved to `/var/lib/aistack/idle_state.json`
+- JSON format saved to `/var/lib/aistack/idle_state.json` by default (override with `AISTACK_STATE_DIR` for developer runs)
 - Atomic writes (temp file + rename) for crash safety
 - Schema: `{status, idle_for_s, threshold_s, cpu_idle_pct, gpu_idle_pct, gating_reasons, last_update}`
 - Used by timer-triggered idle-check for suspend decisions

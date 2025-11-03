@@ -102,6 +102,11 @@ Key settings:
 - `wol.*`: Wake-on-LAN interface and MAC
 - `gpu_lock`: Exclusive GPU access control
 
+Environment overrides:
+- `AISTACK_COMPOSE_DIR` — absolute or relative path to packaged Compose bundles (defaults to the binary’s `compose/` directory).
+- `AISTACK_LOG_DIR` — writable directory for JSON/JSONL output such as `metrics.log` (defaults to `/var/log/aistack`, then falls back to a temp dir when unavailable).
+- `AISTACK_STATE_DIR` — idle state persistence root for developer runs; systemd deployments remain rooted at `/var/lib/aistack`.
+
 ## Development
 
 See [AGENTS.md](AGENTS.md) for contributor guidelines and [CLAUDE.md](CLAUDE.md) for AI-assisted development context.
