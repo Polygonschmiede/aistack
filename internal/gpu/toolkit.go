@@ -2,6 +2,7 @@ package gpu
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -38,24 +39,23 @@ func (td *ToolkitDetector) DetectContainerToolkit() ContainerToolkitReport {
 		return report
 	}
 
-	// Try to run a test container with --gpus flag
-	// This is a dry-run test (using --rm and immediate exit)
-	cmd := exec.Command("docker", "run", "--rm", "--gpus", "all", "nvidia/cuda:12.0.0-base-ubuntu22.04", "nvidia-smi", "--version")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	support, detail, err := td.detectDockerRuntime()
 	if err != nil {
-		report.ErrorMessage = fmt.Sprintf("GPU support test failed: %v, stderr: %s", err, stderr.String())
-		td.logger.Warn("gpu.toolkit.test.failed", "GPU support test failed", map[string]interface{}{
-			"error":  err.Error(),
-			"stderr": stderr.String(),
+		report.ErrorMessage = detail
+		td.logger.Warn("gpu.toolkit.inspect.failed", "Failed to inspect docker runtime", map[string]interface{}{
+			"error": err.Error(),
 		})
 		return report
 	}
 
-	// If we got here, --gpus is supported
+	if !support {
+		report.ErrorMessage = detail
+		td.logger.Info("gpu.toolkit.runtime.absent", "NVIDIA runtime not detected", map[string]interface{}{
+			"detail": detail,
+		})
+		return report
+	}
+
 	report.DockerSupport = true
 
 	// Try to extract toolkit version from nvidia-container-toolkit
@@ -75,6 +75,43 @@ func (td *ToolkitDetector) DetectContainerToolkit() ContainerToolkitReport {
 func (td *ToolkitDetector) isDockerAvailable() bool {
 	cmd := exec.Command("docker", "info")
 	return cmd.Run() == nil
+}
+
+func (td *ToolkitDetector) detectDockerRuntime() (bool, string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("docker", "info", "--format", "{{json .Runtimes}}")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err == nil {
+		runtimes := make(map[string]json.RawMessage)
+		if err := json.Unmarshal(stdout.Bytes(), &runtimes); err == nil {
+			if _, ok := runtimes["nvidia"]; ok {
+				return true, "", nil
+			}
+		} else {
+			td.logger.Warn("gpu.toolkit.runtime.parse_failed", "Failed to parse docker runtime json", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	cmd = exec.Command("docker", "info")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Sprintf("docker info failed: %v", err), err
+	}
+
+	infoOutput := stdout.String()
+	if strings.Contains(infoOutput, "Runtimes: nvidia") || strings.Contains(infoOutput, "nvidia-container-runtime") {
+		return true, "", nil
+	}
+
+	return false, "NVIDIA runtime not listed in docker info", nil
 }
 
 // getToolkitVersion attempts to get the NVIDIA Container Toolkit version

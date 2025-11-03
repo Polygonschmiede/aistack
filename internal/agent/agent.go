@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -17,15 +18,18 @@ import (
 
 // Agent represents the background service
 type Agent struct {
-	logger         *logging.Logger
-	ctx            context.Context
-	cancel         context.CancelFunc
-	tickRate       time.Duration
-	startTime      time.Time
-	metricsCollector *metrics.Collector
-	idleEngine     *idle.Engine
-	idleStateManager *idle.StateManager
-	idleExecutor   *idle.Executor
+	logger               *logging.Logger
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	tickRate             time.Duration
+	startTime            time.Time
+	metricsCollector     *metrics.Collector
+	idleEngine           *idle.Engine
+	idleStateManager     *idle.StateManager
+	idleExecutor         *idle.Executor
+	metricsLogPath       string
+	metricsWriteFailed   bool
+	inhibitorCheckFailed bool
 }
 
 // NewAgent creates a new agent instance
@@ -42,6 +46,9 @@ func NewAgent(logger *logging.Logger) *Agent {
 	idleStateManager := idle.NewStateManager(idleConfig.StateFilePath, logger)
 	idleExecutor := idle.NewExecutor(idleConfig, logger)
 
+	metricsLogDir := resolveLogDir(logger)
+	metricsLogPath := filepath.Join(metricsLogDir, "metrics.log")
+
 	return &Agent{
 		logger:           logger,
 		ctx:              ctx,
@@ -52,6 +59,7 @@ func NewAgent(logger *logging.Logger) *Agent {
 		idleEngine:       idleEngine,
 		idleStateManager: idleStateManager,
 		idleExecutor:     idleExecutor,
+		metricsLogPath:   metricsLogPath,
 	}
 }
 
@@ -141,6 +149,45 @@ func (a *Agent) collectAndProcessMetrics() {
 	// Get current idle state
 	idleState := a.idleEngine.GetState()
 
+	if a.idleExecutor != nil {
+		if hasInhibit, inhibitors, err := a.idleExecutor.ActiveInhibitors(); err != nil {
+			if !a.inhibitorCheckFailed {
+				a.logger.Warn("agent.inhibitors.check_failed", "Failed to inspect systemd inhibitors", map[string]interface{}{
+					"error": err.Error(),
+				})
+				a.inhibitorCheckFailed = true
+			}
+		} else {
+			if hasInhibit {
+				idleState.GatingReasons = addGatingReason(idleState.GatingReasons, idle.GatingReasonInhibit)
+				a.logger.Debug("agent.inhibitors.active", "Active inhibitors detected", map[string]interface{}{
+					"count": len(inhibitors),
+				})
+			} else {
+				idleState.GatingReasons = removeGatingReason(idleState.GatingReasons, idle.GatingReasonInhibit)
+			}
+			a.inhibitorCheckFailed = false
+		}
+	}
+
+	// Persist metrics sample to JSONL log
+	if err := a.metricsCollector.WriteSample(sample, a.metricsLogPath); err != nil {
+		if !a.metricsWriteFailed {
+			a.logger.Warn("agent.metrics.write_failed", "Failed to write metrics sample", map[string]interface{}{
+				"error": err.Error(),
+				"path":  a.metricsLogPath,
+			})
+			a.metricsWriteFailed = true
+		}
+	} else {
+		if a.metricsWriteFailed {
+			a.logger.Info("agent.metrics.write_recovered", "Metrics logging restored", map[string]interface{}{
+				"path": a.metricsLogPath,
+			})
+		}
+		a.metricsWriteFailed = false
+	}
+
 	// Save idle state
 	if err := a.idleStateManager.Save(idleState); err != nil {
 		a.logger.Warn("agent.idle.state_save_failed", "Failed to save idle state", map[string]interface{}{
@@ -155,6 +202,68 @@ func (a *Agent) collectAndProcessMetrics() {
 		"threshold_s":    idleState.ThresholdSeconds,
 		"gating_reasons": idleState.GatingReasons,
 	})
+}
+
+// resolveLogDir determines a writable log directory, favoring production defaults
+func resolveLogDir(logger *logging.Logger) string {
+	var candidates []string
+
+	if envDir := os.Getenv("AISTACK_LOG_DIR"); envDir != "" {
+		candidates = append(candidates, envDir)
+	}
+
+	candidates = append(candidates, "/var/log/aistack")
+
+	for _, dir := range candidates {
+		if err := ensureWritableDir(dir); err == nil {
+			return dir
+		}
+
+		logger.Warn("agent.logdir.unwritable", "Log directory not writable, trying fallback", map[string]interface{}{
+			"path": dir,
+		})
+	}
+
+	fallback := filepath.Join(os.TempDir(), "aistack")
+	if err := ensureWritableDir(fallback); err != nil {
+		logger.Error("agent.logdir.fallback_failed", "Failed to prepare fallback log directory", map[string]interface{}{
+			"path":  fallback,
+			"error": err.Error(),
+		})
+	}
+	return fallback
+}
+
+func ensureWritableDir(path string) error {
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return err
+	}
+
+	testFile := filepath.Join(path, ".write-test")
+	if err := os.WriteFile(testFile, []byte{}, 0o644); err != nil {
+		return err
+	}
+
+	return os.Remove(testFile)
+}
+
+func addGatingReason(reasons []string, reason string) []string {
+	for _, r := range reasons {
+		if r == reason {
+			return reasons
+		}
+	}
+	return append(reasons, reason)
+}
+
+func removeGatingReason(reasons []string, reason string) []string {
+	filtered := make([]string, 0, len(reasons))
+	for _, r := range reasons {
+		if r != reason {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
 }
 
 // Shutdown performs graceful shutdown of the agent
@@ -210,11 +319,22 @@ func IdleCheck(logger *logging.Logger) error {
 		})
 
 		// Attempt suspend
-		if err := executor.Execute(state); err != nil {
+		if err := executor.Execute(&state); err != nil {
 			logger.Error("idle.suspend_failed", "Failed to execute suspend", map[string]interface{}{
 				"error": err.Error(),
 			})
+			if saveErr := stateManager.Save(state); saveErr != nil {
+				logger.Warn("idle.state_save_failed", "Failed to persist updated state", map[string]interface{}{
+					"error": saveErr.Error(),
+				})
+			}
 			return err
+		}
+
+		if err := stateManager.Save(state); err != nil {
+			logger.Warn("idle.state_save_failed", "Failed to persist updated state", map[string]interface{}{
+				"error": err.Error(),
+			})
 		}
 	} else {
 		logger.Info("idle.suspend_skipped", "Suspend not required", map[string]interface{}{

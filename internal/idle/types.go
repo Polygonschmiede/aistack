@@ -1,6 +1,8 @@
 package idle
 
 import (
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -30,6 +32,18 @@ type IdleConfig struct {
 
 // DefaultIdleConfig returns default idle configuration
 func DefaultIdleConfig() IdleConfig {
+	stateDir := "/var/lib/aistack"
+
+	if envDir := os.Getenv("AISTACK_STATE_DIR"); envDir != "" {
+		stateDir = envDir
+	} else if os.Geteuid() != 0 {
+		if home, err := os.UserHomeDir(); err == nil {
+			stateDir = filepath.Join(home, ".local", "state", "aistack")
+		} else {
+			stateDir = filepath.Join(os.TempDir(), "aistack")
+		}
+	}
+
 	return IdleConfig{
 		WindowSeconds:      60,  // 60 second sliding window
 		IdleTimeoutSeconds: 300, // 5 minutes idle timeout
@@ -37,7 +51,7 @@ func DefaultIdleConfig() IdleConfig {
 		GPUThresholdPct:    5.0,
 		MinSamplesRequired: 6, // At least 6 samples (60s / 10s sample interval)
 		EnableSuspend:      true,
-		StateFilePath:      "/var/lib/aistack/idle_state.json",
+		StateFilePath:      filepath.Join(stateDir, "idle_state.json"),
 	}
 }
 

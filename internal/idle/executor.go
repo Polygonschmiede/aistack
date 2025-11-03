@@ -23,7 +23,7 @@ func NewExecutor(config IdleConfig, logger *logging.Logger) *Executor {
 }
 
 // Execute attempts to execute suspend with appropriate gate checks
-func (e *Executor) Execute(state IdleState) error {
+func (e *Executor) Execute(state *IdleState) error {
 	// Check if any other gating reasons exist first (before checking inhibitors)
 	if len(state.GatingReasons) > 0 {
 		e.logger.Info("power.suspend.skipped", "Suspend skipped due to gating reasons", map[string]interface{}{
@@ -62,7 +62,9 @@ func (e *Executor) Execute(state IdleState) error {
 		if state.GatingReasons == nil {
 			state.GatingReasons = make([]string, 0)
 		}
-		state.GatingReasons = append(state.GatingReasons, GatingReasonInhibit)
+		if !containsReason(state.GatingReasons, GatingReasonInhibit) {
+			state.GatingReasons = append(state.GatingReasons, GatingReasonInhibit)
+		}
 
 		return fmt.Errorf("suspend blocked by inhibitors: %s", strings.Join(inhibitors, ", "))
 	}
@@ -86,6 +88,11 @@ func (e *Executor) Execute(state IdleState) error {
 
 	e.logger.Info("power.suspend.done", "Suspend executed successfully", nil)
 	return nil
+}
+
+// ActiveInhibitors returns whether there are active systemd inhibitors blocking suspend
+func (e *Executor) ActiveInhibitors() (bool, []string, error) {
+	return e.checkInhibitors()
 }
 
 // checkInhibitors checks for active systemd inhibitors
@@ -145,4 +152,13 @@ func (e *Executor) CheckCanSuspend() error {
 	}
 
 	return nil
+}
+
+func containsReason(reasons []string, target string) bool {
+	for _, r := range reasons {
+		if r == target {
+			return true
+		}
+	}
+	return false
 }

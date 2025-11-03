@@ -20,7 +20,7 @@ func NewCollector(config MetricsConfig, logger *logging.Logger) *Collector {
 	return &Collector{
 		logger:       logger,
 		config:       config,
-		cpuCollector: NewCPUCollector(logger),
+		cpuCollector: NewCPUCollector(logger, config.EnableCPUPower),
 		writer:       NewWriter(logger),
 	}
 }
@@ -41,6 +41,11 @@ func (c *Collector) Initialize() error {
 			})
 			c.config.EnableGPU = false // Disable if init fails
 		}
+	}
+
+	// Disable CPU power metrics if requested or unavailable
+	if !c.config.EnableCPUPower && c.cpuCollector != nil {
+		c.cpuCollector.EnablePowerMetrics(false)
 	}
 
 	return nil

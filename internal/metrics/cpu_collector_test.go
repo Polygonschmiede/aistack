@@ -7,7 +7,7 @@ import (
 
 func TestCPUCollector_Creation(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
-	collector := NewCPUCollector(logger)
+	collector := NewCPUCollector(logger, false)
 
 	if collector == nil {
 		t.Fatal("Expected collector to be created")
@@ -20,7 +20,7 @@ func TestCPUCollector_Creation(t *testing.T) {
 
 func TestCPUCollector_CalculateUtilization(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
-	collector := NewCPUCollector(logger)
+	collector := NewCPUCollector(logger, false)
 
 	// Simulate CPU stats with 50% utilization
 	prev := &CPUStats{
@@ -45,7 +45,7 @@ func TestCPUCollector_CalculateUtilization(t *testing.T) {
 
 func TestCPUCollector_CalculateUtilization_ZeroDelta(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
-	collector := NewCPUCollector(logger)
+	collector := NewCPUCollector(logger, false)
 
 	stats := &CPUStats{
 		User:   100,
@@ -63,7 +63,7 @@ func TestCPUCollector_CalculateUtilization_ZeroDelta(t *testing.T) {
 
 func TestCPUCollector_IsRAPLEnabled(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
-	collector := NewCPUCollector(logger)
+	collector := NewCPUCollector(logger, true)
 
 	// On most systems, RAPL won't be available
 	// Just verify the method doesn't panic

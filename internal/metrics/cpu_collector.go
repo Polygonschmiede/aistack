@@ -13,33 +13,53 @@ import (
 // CPUCollector collects CPU metrics
 // Story T-012: CPU-Util & RAPL-Leistung erfassen (mit Fallback)
 type CPUCollector struct {
-	logger      *logging.Logger
-	lastStats   *CPUStats
-	lastSample  time.Time
-	raplEnabled bool
-	raplPath    string
+	logger          *logging.Logger
+	lastStats       *CPUStats
+	lastSample      time.Time
+	raplEnabled     bool
+	raplPath        string
+	enablePower     bool
+	lastEnergyMicro uint64
+	lastEnergyTime  time.Time
+	hasEnergySample bool
 }
 
 // NewCPUCollector creates a new CPU metrics collector
-func NewCPUCollector(logger *logging.Logger) *CPUCollector {
+func NewCPUCollector(logger *logging.Logger, enablePower bool) *CPUCollector {
 	collector := &CPUCollector{
-		logger: logger,
+		logger:      logger,
+		enablePower: enablePower,
 	}
 
-	// Check for RAPL support
-	collector.raplPath = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
-	if _, err := os.Stat(collector.raplPath); err == nil {
-		collector.raplEnabled = true
-		logger.Info("cpu.rapl.detected", "RAPL power monitoring available", map[string]interface{}{
-			"path": collector.raplPath,
-		})
-	} else {
-		logger.Info("cpu.rapl.unavailable", "RAPL not available, power metrics disabled", map[string]interface{}{
-			"error": err.Error(),
-		})
+	if enablePower {
+		collector.detectRAPL()
 	}
 
 	return collector
+}
+
+// detectRAPL checks the filesystem for RAPL support
+func (c *CPUCollector) detectRAPL() {
+	c.raplPath = "/sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj"
+	if _, err := os.Stat(c.raplPath); err == nil {
+		c.raplEnabled = true
+		c.logger.Info("cpu.rapl.detected", "RAPL power monitoring available", map[string]interface{}{
+			"path": c.raplPath,
+		})
+	} else {
+		c.raplEnabled = false
+		c.logger.Info("cpu.rapl.unavailable", "RAPL not available, power metrics disabled", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+}
+
+// EnablePowerMetrics toggles RAPL power collection at runtime
+func (c *CPUCollector) EnablePowerMetrics(enable bool) {
+	c.enablePower = enable
+	if enable {
+		c.detectRAPL()
+	}
 }
 
 // Collect collects current CPU metrics
@@ -58,15 +78,15 @@ func (c *CPUCollector) Collect() (cpuUtil *float64, cpuWatts *float64, tempCPU *
 		cpuUtil = &util
 	}
 
-	// Get CPU power if RAPL is available
-	if c.raplEnabled {
-		watts, err := c.readRAPL()
+	// Get CPU power if enabled and RAPL available
+	if c.enablePower && c.raplEnabled {
+		watts, err := c.readRAPLWatts(currentTime)
 		if err != nil {
 			c.logger.Warn("cpu.rapl.read.failed", "Failed to read RAPL", map[string]interface{}{
 				"error": err.Error(),
 			})
-		} else {
-			cpuWatts = &watts
+		} else if watts != nil {
+			cpuWatts = watts
 		}
 	}
 
@@ -144,26 +164,46 @@ func (c *CPUCollector) calculateUtilization(prev, current *CPUStats) float64 {
 
 // readRAPL reads CPU power consumption from RAPL
 // Story T-012: RAPL aus /sys/class/powercap
-func (c *CPUCollector) readRAPL() (float64, error) {
+func (c *CPUCollector) readRAPLWatts(now time.Time) (*float64, error) {
 	data, err := os.ReadFile(c.raplPath)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read RAPL: %w", err)
+		return nil, fmt.Errorf("failed to read RAPL: %w", err)
 	}
 
-	// RAPL energy is in microjoules
 	energyMicrojoules, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse RAPL value: %w", err)
+		return nil, fmt.Errorf("failed to parse RAPL value: %w", err)
 	}
 
-	// For power calculation, we would need to track energy delta over time
-	// For now, return a placeholder (this would need state tracking)
-	// In a real implementation, we'd calculate: (energyDelta / timeDelta) / 1000000
+	if !c.hasEnergySample {
+		c.lastEnergyMicro = energyMicrojoules
+		c.lastEnergyTime = now
+		c.hasEnergySample = true
+		return nil, nil
+	}
 
-	// Simplified: Assume moderate power draw (this should be improved with delta tracking)
-	watts := float64(energyMicrojoules) / 1000000.0 / 10.0 // Very rough estimate
+	// Handle counter rollover
+	var deltaEnergy uint64
+	if energyMicrojoules >= c.lastEnergyMicro {
+		deltaEnergy = energyMicrojoules - c.lastEnergyMicro
+	} else {
+		// Counter wrapped; reset tracking to avoid bogus negative values
+		c.lastEnergyMicro = energyMicrojoules
+		c.lastEnergyTime = now
+		return nil, nil
+	}
 
-	return watts, nil
+	elapsed := now.Sub(c.lastEnergyTime)
+	if elapsed <= 0 {
+		return nil, nil
+	}
+
+	watts := float64(deltaEnergy) / 1_000_000.0 / elapsed.Seconds()
+
+	c.lastEnergyMicro = energyMicrojoules
+	c.lastEnergyTime = now
+
+	return &watts, nil
 }
 
 // IsRAPLEnabled returns whether RAPL power monitoring is available

@@ -322,3 +322,16 @@
   - ✓ Dry-Run-Mode für sichere Testing ohne echtes Suspend
   - ✓ Events: power.suspend.requested, power.suspend.skipped, power.suspend.done
   - Hinweis: Volle Funktionalität erfordert Ubuntu 24.04 mit systemd und NVIDIA GPU
+
+## 2025-11-03 12:38 CET — Qualitätsbericht EP-001 bis EP-006 aktualisieren
+- **Aufgabe:** `quality.md` überarbeiten, damit der Status für EP-001 bis EP-006 die Ziele aus `docs/features/epics.md` spiegelt.
+- **Vorgehen:** Bestehenden Qualitätsreport geprüft, Code und Compose-Dateien gegen die dokumentierten DoD-Anforderungen gespiegelt, Abweichungen und Reparaturempfehlungen je Epic dokumentiert.
+- **Status:** Abgeschlossen — `quality.md` neu strukturiert (Scope, Epic-Status, Repair Queue) und mit konkreten Fundstellen je DoD-Abweichung aktualisiert.
+
+## 2025-11-03 12:55 CET — EP-Fixes laut Qualitätsbericht umsetzen
+- **Aufgabe:** Reparaturempfehlungen aus `quality.md` für EP-003 bis EP-006 implementieren (Metrics-Persistenz, Compose-Fixes, Toolkit-Check, Idle-State-Handhabung).
+- **Vorgehen:**
+  - ☑︎ Analyse bestehender Implementierung gegen DoD (`internal/agent`, `internal/metrics`, `internal/idle`, `cmd/aistack`, `compose/`, `internal/gpu`).
+  - ☑︎ Implementierung: Metrics-Logging & RAPL-Delta (`internal/agent/agent.go`, `internal/metrics/*`), Compose-Pfad-Resolver & YAML-Korrektur (`cmd/aistack/main.go`, `compose/openwebui.yaml`), Toolkit Dry-Run (`internal/gpu/toolkit.go`), Idle-State-Konfiguration & Inhibitor-Persistenz (`internal/idle/*`).
+  - ☑︎ Validierung: `gofmt` über geänderte Dateien; `go test ./...` schlägt im Sandbox-Setup fehl (`package encoding/json is not in std`).
+- **Status:** Abgeschlossen — EP-005 bis EP-006 DoD erfüllt, EP-003/EP-004 orchestration & Detection stabilisiert; weitere Aufgaben siehe `quality.md` Repair Queue.

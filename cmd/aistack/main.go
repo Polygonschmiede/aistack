@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -134,7 +135,7 @@ func runInstall() {
 	logger := logging.NewLogger(logging.LevelInfo)
 
 	// Get compose directory (relative to binary or default)
-	composeDir := "./compose"
+	composeDir := resolveComposeDir()
 
 	manager, err := services.NewManager(composeDir, logger)
 	if err != nil {
@@ -179,7 +180,7 @@ func runInstall() {
 // runServiceCommand runs start/stop commands on services
 func runServiceCommand(command string) {
 	logger := logging.NewLogger(logging.LevelInfo)
-	composeDir := "./compose"
+	composeDir := resolveComposeDir()
 
 	manager, err := services.NewManager(composeDir, logger)
 	if err != nil {
@@ -220,7 +221,7 @@ func runServiceCommand(command string) {
 // runStatus displays status of all services
 func runStatus() {
 	logger := logging.NewLogger(logging.LevelInfo)
-	composeDir := "./compose"
+	composeDir := resolveComposeDir()
 
 	manager, err := services.NewManager(composeDir, logger)
 	if err != nil {
@@ -402,6 +403,48 @@ Usage:
 
 For more information, visit: https://github.com/polygonschmiede/aistack
 `, version)
+}
+
+func resolveComposeDir() string {
+	if envDir := os.Getenv("AISTACK_COMPOSE_DIR"); envDir != "" {
+		if abs, err := filepath.Abs(envDir); err == nil {
+			if dirExists(abs) {
+				return abs
+			}
+		}
+	}
+
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates := []string{
+			filepath.Join(exeDir, "compose"),
+			filepath.Join(exeDir, "..", "share", "aistack", "compose"),
+		}
+
+		for _, candidate := range candidates {
+			if abs, err := filepath.Abs(candidate); err == nil && dirExists(abs) {
+				return abs
+			}
+		}
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		legacy := filepath.Join(cwd, "compose")
+		if dirExists(legacy) {
+			return legacy
+		}
+	}
+
+	// Fallback to relative path; downstream code will surface a detailed error
+	return "./compose"
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
 
 // parseFlags is a placeholder for future flag parsing
