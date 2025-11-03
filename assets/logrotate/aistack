@@ -1,0 +1,48 @@
+# aistack log rotation configuration (EP-002)
+# Manages structured JSON logs under /var/log/aistack
+
+/var/log/aistack/*.log {
+    # Rotation policy
+    daily
+    rotate 7
+    maxsize 100M
+
+    # Compression
+    compress
+    delaycompress
+
+    # File permissions
+    create 0640 aistack aistack
+
+    # Handle missing files gracefully
+    missingok
+    notifempty
+
+    # Don't rotate if empty
+    minsize 1M
+
+    # Post-rotation hook (reload services if needed)
+    postrotate
+        # Send SIGHUP to aistack-agent if running
+        if systemctl is-active --quiet aistack-agent.service; then
+            systemctl reload aistack-agent.service 2>/dev/null || true
+        fi
+    endscript
+
+    # Share scripts between all log files
+    sharedscripts
+}
+
+# Special handling for metrics log (higher frequency, more retention)
+/var/log/aistack/metrics.log {
+    daily
+    rotate 30
+    maxsize 500M
+    compress
+    delaycompress
+    create 0640 aistack aistack
+    missingok
+    notifempty
+    minsize 10M
+    sharedscripts
+}
