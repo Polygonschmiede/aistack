@@ -10,6 +10,7 @@ import (
 
 	"aistack/internal/agent"
 	"aistack/internal/logging"
+	"aistack/internal/services"
 	"aistack/internal/tui"
 )
 
@@ -24,6 +25,18 @@ func main() {
 			return
 		case "idle-check":
 			runIdleCheck()
+			return
+		case "install":
+			runInstall()
+			return
+		case "start":
+			runServiceCommand("start")
+			return
+		case "stop":
+			runServiceCommand("stop")
+			return
+		case "status":
+			runStatus()
 			return
 		case "version":
 			fmt.Printf("aistack version %s\n", version)
@@ -108,16 +121,134 @@ func runIdleCheck() {
 	}
 }
 
+// runInstall installs services based on profile or individual service
+func runInstall() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	// Get compose directory (relative to binary or default)
+	composeDir := "./compose"
+
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Check for --profile flag
+	if len(os.Args) > 2 {
+		if os.Args[2] == "--profile" && len(os.Args) > 3 {
+			profile := os.Args[3]
+			fmt.Printf("Installing profile: %s\n", profile)
+			if err := manager.InstallProfile(profile); err != nil {
+				fmt.Fprintf(os.Stderr, "Error installing profile: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Profile %s installed successfully\n", profile)
+			return
+		}
+
+		// Install specific service
+		serviceName := os.Args[2]
+		service, err := manager.GetService(serviceName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Installing service: %s\n", serviceName)
+		if err := service.Install(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error installing service: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Service %s installed successfully\n", serviceName)
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Usage: aistack install [--profile <profile>|<service>]\n")
+	os.Exit(1)
+}
+
+// runServiceCommand runs start/stop commands on services
+func runServiceCommand(command string) {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := "./compose"
+
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack %s <service>\n", command)
+		os.Exit(1)
+	}
+
+	serviceName := os.Args[2]
+	service, err := manager.GetService(serviceName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	switch command {
+	case "start":
+		fmt.Printf("Starting service: %s\n", serviceName)
+		if err := service.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting service: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Service %s started successfully\n", serviceName)
+	case "stop":
+		fmt.Printf("Stopping service: %s\n", serviceName)
+		if err := service.Stop(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error stopping service: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Service %s stopped successfully\n", serviceName)
+	}
+}
+
+// runStatus displays status of all services
+func runStatus() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := "./compose"
+
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	statuses, err := manager.StatusAll()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting status: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Service Status:")
+	fmt.Println("---------------")
+	for _, status := range statuses {
+		fmt.Printf("%-12s  State: %-10s  Health: %s\n",
+			status.Name, status.State, status.Health)
+	}
+}
+
 // printUsage displays usage information
 func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
 
 Usage:
-  aistack              Start the interactive TUI (default)
-  aistack agent        Run as background agent service
-  aistack idle-check   Perform idle evaluation (timer-triggered)
-  aistack version      Print version information
-  aistack help         Show this help message
+  aistack                          Start the interactive TUI (default)
+  aistack agent                    Run as background agent service
+  aistack idle-check               Perform idle evaluation (timer-triggered)
+  aistack install --profile <name> Install services from profile (standard-gpu, minimal)
+  aistack install <service>        Install a specific service (ollama, openwebui, localai)
+  aistack start <service>          Start a service
+  aistack stop <service>           Stop a service
+  aistack status                   Show status of all services
+  aistack version                  Print version information
+  aistack help                     Show this help message
 
 For more information, visit: https://github.com/polygonschmiede/aistack
 `, version)

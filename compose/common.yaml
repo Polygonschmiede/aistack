@@ -1,0 +1,15 @@
+# Common network and volume definitions for aistack services
+# Story T-005: Compose-Template: Netzwerk & Volumes (aistack-net)
+
+networks:
+  aistack-net:
+    name: aistack-net
+    driver: bridge
+
+volumes:
+  ollama_data:
+    name: ollama_data
+  openwebui_data:
+    name: openwebui_data
+  localai_models:
+    name: localai_models

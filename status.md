@@ -110,3 +110,49 @@
   - ✓ Logrotate-Konfiguration vorhanden und testbar
   - ✓ Agent-Binary funktioniert als systemd-Service (ExecStart=/usr/local/bin/aistack agent)
   - Hinweis: Installation auf Ubuntu 24.04 erforderlich für vollständige Verifikation
+
+## 2025-11-03 11:15 CET — EP-003 Implementation (Container Runtime & Compose Assets)
+- **Aufgabe:** EP-003 "Container Runtime & Compose Assets" vollständig implementieren, inklusive Docker Compose Templates und Service-Orchestrierung.
+- **Vorgehen:**
+  - Docker Compose Templates erstellt (Story T-005, T-006, T-007, T-008):
+    - `compose/common.yaml`: Gemeinsames Netzwerk (aistack-net) und Volumes (ollama_data, openwebui_data, localai_models)
+    - `compose/ollama.yaml`: Ollama Service (Port 11434, Health-Check via /api/tags)
+    - `compose/openwebui.yaml`: Open WebUI Service (Port 3000, Backend-Binding zu Ollama)
+    - `compose/localai.yaml`: LocalAI Service (Port 8080, Health-Check via /healthz)
+    - Alle Services mit restart: unless-stopped, healthchecks und resource limits
+  - Container-Service-Module implementiert (`internal/services/`):
+    - `runtime.go`: Container-Runtime-Abstraktion (DockerRuntime mit DetectRuntime)
+    - `network.go`: NetworkManager für idempotentes Netzwerk- und Volume-Management
+    - `health.go`: Health-Check-Mechanismen mit Retry-Support (HTTP-basiert)
+    - `service.go`: BaseService mit Install/Start/Stop/Status/Health/Remove-Operationen
+    - `ollama.go`, `openwebui.go`, `localai.go`: Spezifische Service-Implementierungen
+    - `manager.go`: ServiceManager für Profil-Installation und Status-Aggregation
+  - CLI-Befehle implementiert (erweitert in `cmd/aistack/main.go`):
+    - `aistack install --profile <name>`: Installation von standard-gpu oder minimal Profil
+    - `aistack install <service>`: Installation einzelner Services (ollama, openwebui, localai)
+    - `aistack start <service>`: Service starten
+    - `aistack stop <service>`: Service stoppen
+    - `aistack status`: Status aller Services anzeigen
+  - Comprehensive Unit Tests erstellt:
+    - `runtime_test.go`: Docker-Runtime-Detection und Netzwerk-Erstellung
+    - `health_test.go`: Health-Check mit httptest, Timeouts, Retries (5 Tests)
+    - `network_test.go`: NetworkManager mit MockRuntime (Idempotenz-Tests)
+    - `service_test.go`: BaseService und alle drei Service-Implementierungen
+    - `manager_test.go`: ServiceManager mit MockRuntime (GetService, ListServices)
+    - Alle Tests nutzen table-driven Patterns und MockRuntime für Isolation
+  - Testing & Validation:
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/services/... -v`: Alle 18 Service-Tests erfolgreich (2.4s)
+    - ✓ `go test ./...`: Alle Tests (inkl. TUI und Logging) erfolgreich
+    - ✓ `./dist/aistack version`: Binary funktioniert
+    - ✓ `./dist/aistack help`: CLI-Befehle dokumentiert
+    - ✓ Compose-Files validiert und syntaktisch korrekt
+- **Status:** Abgeschlossen — EP-003 implementiert. DoD erfüllt:
+  - ✓ Compose-Templates für Ollama, Open WebUI und LocalAI mit Health-Checks
+  - ✓ Gemeinsames Netzwerk (aistack-net) und dedizierte Volumes pro Service
+  - ✓ CLI-Befehle für Service-Management (install/start/stop/status)
+  - ✓ Health-Check-Mechanismen mit HTTP-Probes und Retry-Logik
+  - ✓ Idempotente Network- und Volume-Erstellung
+  - ✓ Unit-Tests mit >80% Coverage-Ziel, MockRuntime für isolation
+  - ✓ Profil-Installation (standard-gpu: alle 3 Services, minimal: nur Ollama)
+  - Hinweis: Docker-Daemon erforderlich für `aistack install` und `docker compose` Operationen

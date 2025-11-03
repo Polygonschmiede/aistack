@@ -1,0 +1,86 @@
+package services
+
+import (
+	"aistack/internal/logging"
+	"testing"
+)
+
+// MockRuntime is a mock implementation of Runtime for testing
+type MockRuntime struct {
+	networks  map[string]bool
+	volumes   map[string]bool
+	isRunning bool
+}
+
+func NewMockRuntime() *MockRuntime {
+	return &MockRuntime{
+		networks:  make(map[string]bool),
+		volumes:   make(map[string]bool),
+		isRunning: true,
+	}
+}
+
+func (m *MockRuntime) IsRunning() bool {
+	return m.isRunning
+}
+
+func (m *MockRuntime) CreateNetwork(name string) error {
+	m.networks[name] = true
+	return nil
+}
+
+func (m *MockRuntime) CreateVolume(name string) error {
+	m.volumes[name] = true
+	return nil
+}
+
+func (m *MockRuntime) ComposeUp(composeFile string, services ...string) error {
+	return nil
+}
+
+func (m *MockRuntime) ComposeDown(composeFile string) error {
+	return nil
+}
+
+func (m *MockRuntime) GetContainerStatus(name string) (string, error) {
+	return "running", nil
+}
+
+func TestNetworkManager_EnsureNetwork(t *testing.T) {
+	runtime := NewMockRuntime()
+	logger := logging.NewLogger(logging.LevelInfo)
+	nm := NewNetworkManager(runtime, logger)
+
+	err := nm.EnsureNetwork()
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if !runtime.networks[AistackNetwork] {
+		t.Error("Expected aistack-net to be created")
+	}
+
+	// Test idempotency - calling again should not fail
+	err = nm.EnsureNetwork()
+	if err != nil {
+		t.Fatalf("Expected idempotent call to succeed, got: %v", err)
+	}
+}
+
+func TestNetworkManager_EnsureVolumes(t *testing.T) {
+	runtime := NewMockRuntime()
+	logger := logging.NewLogger(logging.LevelInfo)
+	nm := NewNetworkManager(runtime, logger)
+
+	volumes := []string{"vol1", "vol2", "vol3"}
+	err := nm.EnsureVolumes(volumes)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	for _, vol := range volumes {
+		if !runtime.volumes[vol] {
+			t.Errorf("Expected volume %s to be created", vol)
+		}
+	}
+}
