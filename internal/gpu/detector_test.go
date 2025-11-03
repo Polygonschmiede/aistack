@@ -1,6 +1,7 @@
 package gpu
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -8,12 +9,16 @@ import (
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 )
 
+const (
+	mockDriverVersion = "535.104.05"
+)
+
 func TestDetector_DetectGPUs_Success(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
 
 	// Setup mock NVML
 	mockNVML := NewMockNVML()
-	mockNVML.DriverVersion = "535.104.05"
+	mockNVML.DriverVersion = mockDriverVersion
 	mockNVML.CudaVersion = 12020 // CUDA 12.2
 	mockNVML.DeviceCount = 2
 
@@ -45,8 +50,8 @@ func TestDetector_DetectGPUs_Success(t *testing.T) {
 		t.Error("Expected NVML to be OK")
 	}
 
-	if report.DriverVersion != "535.104.05" {
-		t.Errorf("Expected driver version 535.104.05, got: %s", report.DriverVersion)
+	if report.DriverVersion != mockDriverVersion {
+		t.Errorf("Expected driver version %s, got: %s", mockDriverVersion, report.DriverVersion)
 	}
 
 	if report.CUDAVersion != 12020 {
@@ -93,7 +98,7 @@ func TestDetector_DetectGPUs_NoDevices(t *testing.T) {
 	logger := logging.NewLogger(logging.LevelInfo)
 
 	mockNVML := NewMockNVML()
-	mockNVML.DriverVersion = "535.104.05"
+	mockNVML.DriverVersion = mockDriverVersion
 	mockNVML.CudaVersion = 12020
 	mockNVML.DeviceCount = 0
 
@@ -132,7 +137,7 @@ func TestDetector_SaveReport(t *testing.T) {
 	detector := NewDetector(logger)
 
 	report := GPUReport{
-		DriverVersion: "535.104.05",
+		DriverVersion: mockDriverVersion,
 		CUDAVersion:   12020,
 		NVMLOk:        true,
 		GPUs: []GPUInfo{
@@ -154,7 +159,7 @@ func TestDetector_SaveReport(t *testing.T) {
 	}
 
 	// Verify file exists
-	if _, err := os.Stat(tmpFile); os.IsNotExist(err) {
+	if _, statErr := os.Stat(tmpFile); errors.Is(statErr, os.ErrNotExist) {
 		t.Error("Expected report file to exist")
 	}
 

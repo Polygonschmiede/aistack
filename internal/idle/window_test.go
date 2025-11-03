@@ -158,15 +158,15 @@ func TestSlidingWindow_GetIdleDuration_Reset(t *testing.T) {
 		})
 	}
 
-	// Get idle duration first time (establishes baseline)
-	duration1 := window.GetIdleDuration(10.0, 5.0)
+	// Prime idle duration baseline
+	_ = window.GetIdleDuration(10.0, 5.0)
 
 	// Wait a bit
 	time.Sleep(50 * time.Millisecond)
 
 	// Get idle duration again - should be non-zero now
-	duration1 = window.GetIdleDuration(10.0, 5.0)
-	if duration1 == 0 {
+	duration := window.GetIdleDuration(10.0, 5.0)
+	if duration == 0 {
 		t.Error("Expected non-zero idle duration after delay")
 	}
 

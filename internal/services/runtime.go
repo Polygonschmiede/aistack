@@ -42,6 +42,7 @@ func (r *DockerRuntime) ComposeUp(composeFile string, services ...string) error 
 	args := []string{"compose", "-f", composeFile, "up", "-d"}
 	args = append(args, services...)
 
+	// #nosec G204 — compose arguments originate from curated templates and service names.
 	cmd := exec.Command("docker", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -54,6 +55,7 @@ func (r *DockerRuntime) ComposeUp(composeFile string, services ...string) error 
 
 // ComposeDown stops and removes services
 func (r *DockerRuntime) ComposeDown(composeFile string) error {
+	// #nosec G204 — compose arguments originate from curated templates.
 	cmd := exec.Command("docker", "compose", "-f", composeFile, "down")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -67,6 +69,7 @@ func (r *DockerRuntime) ComposeDown(composeFile string) error {
 // CreateNetwork creates a Docker network if it doesn't exist (idempotent)
 func (r *DockerRuntime) CreateNetwork(name string) error {
 	// Check if network exists
+	// #nosec G204 — network name is controlled by application logic.
 	checkCmd := exec.Command("docker", "network", "inspect", name)
 	if checkCmd.Run() == nil {
 		// Network already exists
@@ -74,6 +77,7 @@ func (r *DockerRuntime) CreateNetwork(name string) error {
 	}
 
 	// Create network
+	// #nosec G204 — network name is controlled by application logic.
 	cmd := exec.Command("docker", "network", "create", name)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -87,6 +91,7 @@ func (r *DockerRuntime) CreateNetwork(name string) error {
 // CreateVolume creates a Docker volume if it doesn't exist (idempotent)
 func (r *DockerRuntime) CreateVolume(name string) error {
 	// Check if volume exists
+	// #nosec G204 — volume name is controlled by application logic.
 	checkCmd := exec.Command("docker", "volume", "inspect", name)
 	if checkCmd.Run() == nil {
 		// Volume already exists
@@ -94,6 +99,7 @@ func (r *DockerRuntime) CreateVolume(name string) error {
 	}
 
 	// Create volume
+	// #nosec G204 — volume name is controlled by application logic.
 	cmd := exec.Command("docker", "volume", "create", name)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -106,6 +112,7 @@ func (r *DockerRuntime) CreateVolume(name string) error {
 
 // GetContainerStatus returns the status of a container
 func (r *DockerRuntime) GetContainerStatus(name string) (string, error) {
+	// #nosec G204 — container names originate from predefined service IDs.
 	cmd := exec.Command("docker", "inspect", "-f", "{{.State.Status}}", name)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

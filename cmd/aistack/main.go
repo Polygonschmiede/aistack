@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"aistack/internal/metrics"
 	"aistack/internal/services"
 	"aistack/internal/tui"
+	"aistack/internal/wol"
 )
 
 const version = "0.1.0-dev"
@@ -46,6 +46,15 @@ func main() {
 			return
 		case "metrics-test":
 			runMetricsTest()
+			return
+		case "wol-check":
+			runWoLCheck()
+			return
+		case "wol-setup":
+			runWoLSetup()
+			return
+		case "wol-send":
+			runWoLSend()
 			return
 		case "version":
 			fmt.Printf("aistack version %s\n", version)
@@ -383,6 +392,184 @@ func runMetricsTest() {
 	fmt.Println("Sample data written to: /tmp/aistack_metrics_test.jsonl")
 }
 
+// runWoLCheck checks Wake-on-LAN status for network interfaces
+func runWoLCheck() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	fmt.Println("Checking Wake-on-LAN configuration...")
+	fmt.Println()
+
+	detector := wol.NewDetector(logger)
+
+	// Try to get default interface
+	iface, err := detector.GetDefaultInterface()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to detect default network interface: %v\n", err)
+		fmt.Println()
+		fmt.Println("💡 Hint: Specify interface manually with 'aistack wol-setup <interface>'")
+		os.Exit(1)
+	}
+
+	fmt.Printf("Checking interface: %s\n", iface)
+	fmt.Println()
+
+	// Detect WoL status
+	status := detector.DetectWoL(iface)
+
+	// Display results
+	fmt.Println("=== Wake-on-LAN Status ===")
+	fmt.Printf("Interface: %s\n", status.Interface)
+	fmt.Printf("MAC Address: %s\n", status.MAC)
+	fmt.Println()
+
+	if status.ErrorMessage != "" {
+		fmt.Printf("❌ Error: %s\n", status.ErrorMessage)
+		fmt.Println()
+		if !status.Supported {
+			fmt.Println("💡 Hint: Wake-on-LAN may not be supported by your hardware/driver")
+			fmt.Println("   or ethtool may not be installed (apt-get install ethtool)")
+		}
+		os.Exit(1)
+	}
+
+	if status.Supported {
+		fmt.Printf("✓ WoL Supported: Yes\n")
+		fmt.Printf("  Available modes: %v\n", status.WoLModes)
+	} else {
+		fmt.Printf("❌ WoL Supported: No\n")
+	}
+
+	fmt.Printf("  Current mode: %s\n", status.CurrentMode)
+
+	if status.Enabled {
+		fmt.Printf("✓ WoL Status: ENABLED\n")
+		fmt.Println()
+		fmt.Println("Your system can be woken via Wake-on-LAN magic packets.")
+		fmt.Printf("To send a test packet: aistack wol-send %s\n", status.MAC)
+	} else {
+		fmt.Printf("❌ WoL Status: DISABLED\n")
+		fmt.Println()
+		fmt.Printf("To enable Wake-on-LAN: sudo aistack wol-setup %s\n", iface)
+	}
+
+	fmt.Println()
+	fmt.Println("⚠️  Note: BIOS/UEFI WoL settings are outside the scope of this tool.")
+	fmt.Println("   Ensure 'Wake on LAN' is enabled in your system BIOS/UEFI.")
+}
+
+// runWoLSetup enables Wake-on-LAN on a specified interface
+func runWoLSetup() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack wol-setup <interface>\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack wol-setup eth0\n")
+		os.Exit(1)
+	}
+
+	iface := os.Args[2]
+
+	fmt.Printf("Setting up Wake-on-LAN on interface: %s\n", iface)
+	fmt.Println()
+
+	detector := wol.NewDetector(logger)
+
+	// Check current status
+	status := detector.DetectWoL(iface)
+	if status.ErrorMessage != "" {
+		fmt.Fprintf(os.Stderr, "❌ Error: %s\n", status.ErrorMessage)
+		os.Exit(1)
+	}
+
+	if !status.Supported {
+		fmt.Fprintf(os.Stderr, "❌ Wake-on-LAN is not supported on interface %s\n", iface)
+		os.Exit(1)
+	}
+
+	if status.Enabled {
+		fmt.Printf("✓ Wake-on-LAN is already enabled on %s\n", iface)
+		fmt.Printf("  Current mode: %s\n", status.CurrentMode)
+		fmt.Printf("  MAC Address: %s\n", status.MAC)
+		return
+	}
+
+	// Enable WoL
+	fmt.Printf("Enabling Wake-on-LAN (requires root privileges)...\n")
+	if err := detector.EnableWoL(iface); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to enable WoL: %v\n", err)
+		fmt.Println()
+		fmt.Println("💡 Hint: This command requires root privileges")
+		fmt.Printf("   Try: sudo aistack wol-setup %s\n", iface)
+		os.Exit(1)
+	}
+
+	// Verify
+	status = detector.DetectWoL(iface)
+	if status.Enabled {
+		fmt.Printf("✓ Wake-on-LAN successfully enabled on %s\n", iface)
+		fmt.Printf("  Mode: %s (magic packet)\n", status.CurrentMode)
+		fmt.Printf("  MAC Address: %s\n", status.MAC)
+		fmt.Println()
+		fmt.Println("⚠️  Note: This setting may not persist across reboots.")
+		fmt.Println("   Consider adding a udev rule or systemd service to make it permanent.")
+	} else {
+		fmt.Fprintf(os.Stderr, "❌ WoL enable command succeeded but verification failed\n")
+		os.Exit(1)
+	}
+}
+
+// runWoLSend sends a Wake-on-LAN magic packet
+func runWoLSend() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack wol-send <mac-address> [broadcast-ip]\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack wol-send AA:BB:CC:DD:EE:FF\n")
+		fmt.Fprintf(os.Stderr, "         aistack wol-send AA:BB:CC:DD:EE:FF 192.168.1.255\n")
+		os.Exit(1)
+	}
+
+	targetMAC := os.Args[2]
+	broadcastIP := ""
+
+	if len(os.Args) > 3 {
+		broadcastIP = os.Args[3]
+	}
+
+	// Validate MAC address
+	if err := wol.ValidateMAC(targetMAC); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Invalid MAC address: %v\n", err)
+		os.Exit(1)
+	}
+
+	normalized, _ := wol.NormalizeMAC(targetMAC)
+
+	fmt.Printf("Sending Wake-on-LAN magic packet...\n")
+	fmt.Printf("  Target MAC: %s\n", normalized)
+
+	if broadcastIP != "" {
+		fmt.Printf("  Broadcast IP: %s\n", broadcastIP)
+	} else {
+		fmt.Printf("  Broadcast IP: 255.255.255.255 (default)\n")
+	}
+
+	fmt.Println()
+
+	sender := wol.NewSender(logger)
+	if err := sender.SendMagicPacket(targetMAC, broadcastIP); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to send magic packet: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Magic packet sent successfully\n")
+	fmt.Println()
+	fmt.Println("The target system should wake up if:")
+	fmt.Println("  1. Wake-on-LAN is enabled in BIOS/UEFI")
+	fmt.Println("  2. Wake-on-LAN is enabled in the OS (ethtool)")
+	fmt.Println("  3. The system is connected to power")
+	fmt.Println("  4. The network switch supports broadcast packets")
+}
+
 // printUsage displays usage information
 func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
@@ -398,6 +585,9 @@ Usage:
   aistack status                   Show status of all services
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack metrics-test             Test metrics collection (CPU/GPU)
+  aistack wol-check                Check Wake-on-LAN status
+  aistack wol-setup <interface>    Enable Wake-on-LAN on interface (requires root)
+  aistack wol-send <mac> [ip]      Send Wake-on-LAN magic packet
   aistack version                  Print version information
   aistack help                     Show this help message
 
@@ -445,9 +635,4 @@ func dirExists(path string) bool {
 		return false
 	}
 	return info.IsDir()
-}
-
-// parseFlags is a placeholder for future flag parsing
-func parseFlags() {
-	flag.Parse()
 }

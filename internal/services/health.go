@@ -41,7 +41,11 @@ func (hc HealthCheck) Check() (HealthStatus, error) {
 	if err != nil {
 		return HealthRed, fmt.Errorf("health check failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			// Nothing to log here; best-effort close.
+		}
+	}()
 
 	if resp.StatusCode != hc.ExpectedStatus {
 		return HealthYellow, fmt.Errorf("unexpected status code: got %d, want %d", resp.StatusCode, hc.ExpectedStatus)

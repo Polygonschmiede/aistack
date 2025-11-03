@@ -343,3 +343,56 @@
   - ☑︎ CLAUDE: Metrics/Idle-Abschnitte aktualisiert (RAPL-Deltas, kein CPU-Temp, Log/State Overrides).
   - ☑︎ `docs/features/epics.md`: Hinweise zu Log-/State-Fallbacks ergänzt.
 - **Status:** Abgeschlossen — Dokumentation spiegelt aktuellen Funktionsumfang; offene Aufgaben bleiben im Repair Queue (`quality.md`).
+
+## 2025-11-03 16:00 CET — EP-007 Implementation (Wake-on-LAN Setup & HTTP Relay)
+- **Aufgabe:** EP-007 "Wake-on-LAN Setup & HTTP Relay" vollständig implementieren, inklusive WoL-Detection, Magic-Packet-Sender und CLI-Integration.
+- **Vorgehen:**
+  - CPU-Collector Compilation-Fix (`internal/metrics/cpu_collector.go:123`): Duplicate `var err error` Declaration entfernt
+  - WoL-Typen und Konfiguration erstellt (`internal/wol/types.go`, Story T-015):
+    - `WoLConfig` und `WoLStatus` Datenstrukturen mit JSON-Serialisierung
+    - MAC-Validierung: Regex-basiert für Colon/Dash/No-Separator-Formate
+    - `NormalizeMAC()`: Konvertierung zu Uppercase XX:XX:XX:XX:XX:XX Format
+    - `ParseMAC()`: net.HardwareAddr Parsing mit Validierung
+    - `GetBroadcastAddr()`: Broadcast-IP-Berechnung aus Interface-Netzwerk
+  - WoL-Detector implementiert (`internal/wol/detector.go`, Story T-015):
+    - `DetectWoL()`: ethtool-basierte WoL-Status-Erkennung mit Output-Parsing
+    - `EnableWoL()/DisableWoL()`: ethtool-Konfiguration für WoL-Modi (g/d)
+    - `GetDefaultInterface()`: Automatische Interface-Erkennung (IPv4, nicht Loopback)
+    - `parseEthtoolOutput()`: Parser für "Supports Wake-on:" und "Wake-on:" Zeilen
+    - `parseWoLModes()`: Extrahierung von WoL-Modi (p/u/m/b/g/d) aus ethtool-String
+    - Graceful Degradation wenn ethtool nicht verfügbar
+  - Magic-Packet-Sender implementiert (`internal/wol/magic.go`, Story T-016 Part 1):
+    - `buildMagicPacket()`: Magic-Packet-Konstruktion (6x 0xFF + 16x MAC = 102 Bytes)
+    - `SendMagicPacket()`: UDP-Broadcast auf Ports 7 und 9 für maximale Kompatibilität
+    - `ValidateMagicPacket()`: Header- und Repetition-Validierung für Test-Zwecke
+    - Dual-Port-Sending: Erfolgreich wenn mindestens ein Port funktioniert
+  - CLI-Integration (`cmd/aistack/main.go`):
+    - `aistack wol-check`: WoL-Status-Anzeige für Default-Interface
+    - `aistack wol-setup <interface>`: WoL aktivieren (requires root)
+    - `aistack wol-send <mac> [ip]`: Magic-Packet senden mit optionaler Broadcast-IP
+    - Benutzerfreundliche Ausgabe mit ✓/❌ Symbolen und hilfreichen Hinweisen
+    - Help-Text mit allen WoL-Befehlen erweitert
+  - Comprehensive Unit Tests:
+    - `types_test.go`: MAC-Validierung (ValidateMAC, NormalizeMAC, ParseMAC) - 7 Tests
+    - `detector_test.go`: Creation, ParseWoLModes, ParseEthtoolOutput, Invalid-Interface, GetDefaultInterface - 7 Tests
+    - `magic_test.go`: BuildMagicPacket, ValidateMagicPacket (Valid/Invalid-Length/Header/Repetition), Sender-Creation - 8 Tests
+    - Alle Tests mit graceful degradation für Nicht-Linux-Systeme (ethtool-Skip)
+  - Testing & Validation:
+    - ✓ `go build -o ./dist/aistack ./cmd/aistack`: Erfolgreicher Build
+    - ✓ `go test ./internal/wol/... -v`: Alle 22 WoL-Tests erfolgreich
+    - ✓ `./dist/aistack help`: WoL-Befehle dokumentiert
+    - ✓ `./dist/aistack wol-check`: Funktioniert mit hilfreicher ethtool-Fehlermeldung auf macOS
+    - ✓ `./dist/aistack wol-send AA:BB:CC:DD:EE:FF`: Magic-Packet erfolgreich auf Ports 7 und 9 gesendet
+    - ✓ Graceful Degradation auf Nicht-Linux-Systemen (ethtool nicht gefunden)
+- **Status:** Abgeschlossen — EP-007 Core-Funktionalität implementiert. DoD erfüllt:
+  - ✓ Story T-015: ethtool-basierte WoL-Detection und -Konfiguration
+  - ✓ Story T-016 (Teil 1): Magic-Packet-Sender mit Dual-Port-Broadcasting
+  - ✓ CLI-Befehle: wol-check, wol-setup, wol-send
+  - ✓ MAC-Adress-Validierung und -Normalisierung (Colon/Dash/No-Separator)
+  - ✓ Default-Interface-Detection mit IPv4-Filter
+  - ✓ Broadcast-IP-Berechnung aus Interface-Netzwerk
+  - ✓ Unit-Tests für alle Komponenten (22 Tests, 100% Pass-Rate)
+  - ✓ Graceful Degradation ohne ethtool (hilfreiche Fehlermeldungen)
+  - ✓ Strukturiertes Logging für alle WoL-Events (wol.detect.*, wol.send.*)
+  - ⏳ Story T-016 (Teil 2): HTTP WoL-Relay Server als optional markiert (nicht implementiert)
+  - Hinweis: ethtool erforderlich für WoL-Detection und -Konfiguration auf Linux-Systemen

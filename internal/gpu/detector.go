@@ -50,7 +50,13 @@ func (d *Detector) DetectGPUs() GPUReport {
 		})
 		return report
 	}
-	defer d.nvml.Shutdown()
+	defer func() {
+		if shutdownRet := d.nvml.Shutdown(); shutdownRet != nvml.SUCCESS {
+			d.logger.Warn("gpu.nvml.shutdown.failed", "NVML shutdown reported an error", map[string]interface{}{
+				"error": nvml.ErrorString(shutdownRet),
+			})
+		}
+	}()
 
 	report.NVMLOk = true
 
@@ -141,7 +147,7 @@ func (d *Detector) SaveReport(report GPUReport, filepath string) error {
 		return fmt.Errorf("failed to marshal report: %w", err)
 	}
 
-	if err := os.WriteFile(filepath, data, 0644); err != nil {
+	if err := os.WriteFile(filepath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write report file: %w", err)
 	}
 

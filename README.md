@@ -56,6 +56,9 @@ make coverage      # Generate coverage report
 ./aistack idle-check          # Perform idle evaluation (timer-triggered)
 ./aistack gpu-check           # Check GPU and NVIDIA stack
 ./aistack metrics-test        # Test metrics collection (3 samples)
+./aistack wol-check           # Check Wake-on-LAN status
+./aistack wol-setup <iface>   # Enable Wake-on-LAN (requires root)
+./aistack wol-send <mac> [ip] # Send Wake-on-LAN magic packet
 ./aistack version             # Show version
 ./aistack help                # Show all commands
 ```
@@ -70,7 +73,7 @@ Currently implementing foundational epics:
 - ✅ **EP-004**: NVIDIA Stack Detection (NVML integration)
 - ✅ **EP-005**: Metrics & Sensors (CPU/GPU/Power monitoring)
 - ✅ **EP-006**: Idle Engine & Autosuspend (Sliding window detection)
-- 📋 **EP-007**: Wake-on-LAN Setup
+- ✅ **EP-007**: Wake-on-LAN Setup (WoL detection, magic packet sender)
 - 📋 **EP-008-010**: Service Orchestration (Ollama, Open WebUI, LocalAI)
 
 See `docs/features/epics.md` for complete roadmap.
@@ -85,6 +88,8 @@ aistack/
 │   ├── services/         # Container lifecycle management
 │   ├── power/            # Power monitoring and idle detection
 │   ├── metrics/          # GPU/CPU metrics collection
+│   ├── idle/             # Idle detection and autosuspend
+│   ├── wol/              # Wake-on-LAN detection and sender
 │   └── diag/             # Diagnostics and health checks
 ├── assets/               # systemd units, configs
 ├── compose/              # Docker Compose templates

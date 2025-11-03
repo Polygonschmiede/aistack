@@ -90,7 +90,7 @@ func (a *Agent) Run() error {
 	for {
 		select {
 		case <-a.ctx.Done():
-			a.logger.Info("agent.context_cancelled", "Agent context cancelled", nil)
+			a.logger.Info("agent.context_canceled", "Agent context canceled", nil)
 			return a.ctx.Err()
 
 		case sig := <-sigChan:
@@ -235,12 +235,12 @@ func resolveLogDir(logger *logging.Logger) string {
 }
 
 func ensureWritableDir(path string) error {
-	if err := os.MkdirAll(path, 0o755); err != nil {
+	if err := os.MkdirAll(path, 0o750); err != nil {
 		return err
 	}
 
 	testFile := filepath.Join(path, ".write-test")
-	if err := os.WriteFile(testFile, []byte{}, 0o644); err != nil {
+	if err := os.WriteFile(testFile, []byte{}, 0o600); err != nil {
 		return err
 	}
 
@@ -354,7 +354,7 @@ func (a *Agent) HealthCheck() error {
 	// Check if context is still valid
 	select {
 	case <-a.ctx.Done():
-		return fmt.Errorf("agent context is cancelled")
+		return fmt.Errorf("agent context is canceled")
 	default:
 		return nil
 	}

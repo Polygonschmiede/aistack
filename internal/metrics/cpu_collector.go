@@ -121,15 +121,42 @@ func (c *CPUCollector) readCPUStats() (*CPUStats, error) {
 	}
 
 	stats := &CPUStats{}
-	stats.User, _ = strconv.ParseUint(fields[1], 10, 64)
-	stats.Nice, _ = strconv.ParseUint(fields[2], 10, 64)
-	stats.System, _ = strconv.ParseUint(fields[3], 10, 64)
-	stats.Idle, _ = strconv.ParseUint(fields[4], 10, 64)
-	stats.IOWait, _ = strconv.ParseUint(fields[5], 10, 64)
-	stats.IRQ, _ = strconv.ParseUint(fields[6], 10, 64)
-	stats.SoftIRQ, _ = strconv.ParseUint(fields[7], 10, 64)
+
+	parse := func(value string) (uint64, error) {
+		parsed, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid cpu stat value %q: %w", value, err)
+		}
+		return parsed, nil
+	}
+
+	if stats.User, err = parse(fields[1]); err != nil {
+		return nil, err
+	}
+	if stats.Nice, err = parse(fields[2]); err != nil {
+		return nil, err
+	}
+	if stats.System, err = parse(fields[3]); err != nil {
+		return nil, err
+	}
+	if stats.Idle, err = parse(fields[4]); err != nil {
+		return nil, err
+	}
+	if stats.IOWait, err = parse(fields[5]); err != nil {
+		return nil, err
+	}
+	if stats.IRQ, err = parse(fields[6]); err != nil {
+		return nil, err
+	}
+	if stats.SoftIRQ, err = parse(fields[7]); err != nil {
+		return nil, err
+	}
 	if len(fields) > 8 {
-		stats.Steal, _ = strconv.ParseUint(fields[8], 10, 64)
+		value, parseErr := parse(fields[8])
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		stats.Steal = value
 	}
 
 	return stats, nil

@@ -46,7 +46,11 @@ func (g *GPUCollector) Initialize() error {
 	// Get handle to first GPU
 	device, ret := g.nvml.DeviceGetHandleByIndex(g.deviceIndex)
 	if ret != nvml.SUCCESS {
-		g.nvml.Shutdown()
+		if shutdownRet := g.nvml.Shutdown(); shutdownRet != nvml.SUCCESS {
+			g.logger.Warn("gpu.collector.shutdown.failed", "NVML shutdown reported an error during init", map[string]interface{}{
+				"error": nvml.ErrorString(shutdownRet),
+			})
+		}
 		return fmt.Errorf("failed to get GPU device: %v", nvml.ErrorString(ret))
 	}
 
@@ -120,7 +124,11 @@ func (g *GPUCollector) Collect() (gpuUtil *float64, gpuMemMB *uint64, gpuWatts *
 // Shutdown shuts down the GPU collector
 func (g *GPUCollector) Shutdown() {
 	if g.initialized {
-		g.nvml.Shutdown()
+		if shutdownRet := g.nvml.Shutdown(); shutdownRet != nvml.SUCCESS {
+			g.logger.Warn("gpu.collector.shutdown.failed", "NVML shutdown reported an error", map[string]interface{}{
+				"error": nvml.ErrorString(shutdownRet),
+			})
+		}
 		g.initialized = false
 		g.logger.Info("gpu.collector.shutdown", "GPU metrics collector shut down", nil)
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"aistack/internal/logging"
 )
@@ -22,7 +23,7 @@ func NewWriter(logger *logging.Logger) *Writer {
 
 // Write writes a metrics sample to a JSONL file
 // Story T-011: JSONL-Log
-func (w *Writer) Write(sample MetricsSample, filepath string) error {
+func (w *Writer) Write(sample MetricsSample, logPath string) error {
 	// Marshal sample to JSON
 	data, err := json.Marshal(sample)
 	if err != nil {
@@ -32,12 +33,22 @@ func (w *Writer) Write(sample MetricsSample, filepath string) error {
 	// Append newline for JSONL format
 	data = append(data, '\n')
 
+	cleanPath := filepath.Clean(logPath)
+
 	// Open file in append mode (create if not exists)
-	file, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// #nosec G304 — log path is controlled by configuration and cleaned above.
+	file, err := os.OpenFile(cleanPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to open metrics log: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			w.logger.Warn("metrics.writer.close_failed", "Failed to close metrics log", map[string]interface{}{
+				"error": cerr.Error(),
+				"path":  cleanPath,
+			})
+		}
+	}()
 
 	// Write sample
 	if _, err := file.Write(data); err != nil {

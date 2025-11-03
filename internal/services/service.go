@@ -4,6 +4,7 @@ import (
 	"aistack/internal/logging"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
 
 // Service represents a container service
@@ -84,44 +85,58 @@ func (s *BaseService) Install() error {
 
 // Start starts the service using docker compose
 func (s *BaseService) Start() error {
-	s.logger.Info("service.start", fmt.Sprintf("Starting %s service", s.name), map[string]interface{}{
-		"service": s.name,
+	return s.runComposeAction("start", func(composeFile string) error {
+		return s.runtime.ComposeUp(composeFile)
 	})
-
-	if err := s.runtime.ComposeUp(s.composeFile); err != nil {
-		s.logger.Error("service.start.error", "Failed to start service", map[string]interface{}{
-			"service": s.name,
-			"error":   err.Error(),
-		})
-		return fmt.Errorf("failed to start %s: %w", s.name, err)
-	}
-
-	s.logger.Info("service.started", fmt.Sprintf("%s service started", s.name), map[string]interface{}{
-		"service": s.name,
-	})
-
-	return nil
 }
 
 // Stop stops the service
 func (s *BaseService) Stop() error {
-	s.logger.Info("service.stop", fmt.Sprintf("Stopping %s service", s.name), map[string]interface{}{
-		"service": s.name,
-	})
+	return s.runComposeAction("stop", s.runtime.ComposeDown)
+}
 
-	if err := s.runtime.ComposeDown(s.composeFile); err != nil {
-		s.logger.Error("service.stop.error", "Failed to stop service", map[string]interface{}{
+func (s *BaseService) runComposeAction(action string, execFn func(string) error) error {
+	verb := actionVerb(action)
+	baseEvent := fmt.Sprintf("service.%s", action)
+	serviceFields := map[string]interface{}{"service": s.name}
+
+	s.logger.Info(baseEvent, fmt.Sprintf("%s %s service", verb, s.name), serviceFields)
+
+	if err := execFn(s.composeFile); err != nil {
+		s.logger.Error(baseEvent+".error", fmt.Sprintf("Failed to %s service", action), map[string]interface{}{
 			"service": s.name,
 			"error":   err.Error(),
 		})
-		return fmt.Errorf("failed to stop %s: %w", s.name, err)
+		return fmt.Errorf("failed to %s %s: %w", action, s.name, err)
 	}
 
-	s.logger.Info("service.stopped", fmt.Sprintf("%s service stopped", s.name), map[string]interface{}{
-		"service": s.name,
-	})
-
+	s.logger.Info(baseEvent+"ed", fmt.Sprintf("%s service %s", s.name, pastTense(action)), serviceFields)
 	return nil
+}
+
+func actionVerb(action string) string {
+	verbs := map[string]string{
+		"start": "Starting",
+		"stop":  "Stopping",
+	}
+	if v, ok := verbs[action]; ok {
+		return v
+	}
+	if action == "" {
+		return action
+	}
+	return strings.ToUpper(action[:1]) + action[1:]
+}
+
+func pastTense(action string) string {
+	forms := map[string]string{
+		"start": "started",
+		"stop":  "stopped",
+	}
+	if v, ok := forms[action]; ok {
+		return v
+	}
+	return action + "ed"
 }
 
 // Status returns the current status of the service

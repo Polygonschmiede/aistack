@@ -27,7 +27,7 @@ func NewStateManager(filePath string, logger *logging.Logger) *StateManager {
 func (sm *StateManager) Save(state IdleState) error {
 	// Ensure directory exists
 	dir := filepath.Dir(sm.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
@@ -39,7 +39,7 @@ func (sm *StateManager) Save(state IdleState) error {
 
 	// Write to file atomically (write to temp, then rename)
 	tempPath := sm.filePath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+	if err := os.WriteFile(tempPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 

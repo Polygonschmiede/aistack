@@ -191,6 +191,62 @@ Check inhibitors
 systemctl suspend (if all gates pass)
 ```
 
+### Wake-on-LAN Architecture
+
+The Wake-on-LAN subsystem (`internal/wol/`) provides remote system wake-up capabilities:
+
+**WoL Types** (`types.go`):
+- `WoLConfig`: Configuration with Interface, MAC, WoLState, BroadcastIP
+- `WoLStatus`: Detection result with Supported, Enabled, WoLModes, CurrentMode
+- MAC address validation: Regex-based for various formats (XX:XX:XX:XX:XX:XX, XX-XX-XX-XX-XX-XX, XXXXXXXXXXXX)
+- `NormalizeMAC()`: Converts to uppercase colon-separated format
+- `ParseMAC()`: Converts to net.HardwareAddr with validation
+- `GetBroadcastAddr()`: Calculates broadcast IP from interface network
+
+**WoL Detector** (`detector.go`):
+- `DetectWoL()`: ethtool-based WoL status detection
+- `EnableWoL()/DisableWoL()`: Configure WoL via ethtool (mode 'g' for magic packet, 'd' for disabled)
+- `GetDefaultInterface()`: Auto-detect suitable network interface (IPv4, not loopback)
+- `parseEthtoolOutput()`: Parse ethtool output for "Supports Wake-on:" and "Wake-on:" lines
+- `parseWoLModes()`: Extract WoL modes (p/u/m/b/g/d) from ethtool string
+- Graceful degradation when ethtool not available
+
+**WoL Modes**:
+- `p`: Wake on PHY activity
+- `u`: Wake on unicast messages
+- `m`: Wake on multicast messages
+- `b`: Wake on broadcast messages
+- `g`: Wake on magic packet (most common)
+- `d`: Disabled
+
+**Magic Packet Sender** (`magic.go`):
+- `buildMagicPacket()`: Constructs magic packet (6 bytes 0xFF + 16x MAC address = 102 bytes)
+- `SendMagicPacket()`: UDP broadcast on ports 7 and 9 for maximum compatibility
+- `ValidateMagicPacket()`: Verification for testing (header check + repetition validation)
+- Dual-port sending: Success if at least one port works
+- Default broadcast: 255.255.255.255 (customizable per interface)
+
+**CLI Commands**:
+- `aistack wol-check`: Display WoL status for default interface
+- `aistack wol-setup <interface>`: Enable WoL on specified interface (requires root)
+- `aistack wol-send <mac> [broadcast_ip]`: Send magic packet to MAC address
+
+**Event Logging**:
+- `wol.detect.*`: WoL detection events (found, not_found, ethtool_not_found)
+- `wol.send.*`: Magic packet sending events (success, port_failed)
+- `wol.default_interface.*`: Interface detection events
+
+**Requirements**:
+- ethtool required for WoL detection and configuration (Linux only)
+- Root/sudo required for WoL configuration changes
+- Hardware/driver must support WoL (check BIOS/UEFI settings)
+- Network switch must forward broadcast packets
+
+**HTTP Relay** (Optional, Story T-016):
+- Not implemented in core
+- Would provide HTTP→WoL gateway for remote wake-up via API
+- Planned for future enhancement
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:
