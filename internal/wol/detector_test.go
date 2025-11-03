@@ -12,7 +12,7 @@ func TestDetector_Creation(t *testing.T) {
 	detector := NewDetector(logger)
 
 	if detector == nil {
-		t.Error("Expected detector to be created")
+		t.Fatal("Expected detector to be created")
 	}
 
 	if detector.logger == nil {

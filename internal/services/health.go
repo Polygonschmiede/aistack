@@ -47,9 +47,7 @@ func (hc HealthCheck) Check() (HealthStatus, error) {
 		return HealthRed, fmt.Errorf("health check failed: %w", err)
 	}
 	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			// Nothing to log here; best-effort close.
-		}
+		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != hc.ExpectedStatus {

@@ -56,7 +56,7 @@ func TestBackendBindingManager_SetBinding_Ollama(t *testing.T) {
 	manager := NewBackendBindingManager(tmpDir, logger)
 
 	// Set binding to Ollama
-	if err := manager.SetBinding(BackendOllama); err != nil {
+	if err = manager.SetBinding(BackendOllama); err != nil {
 		t.Fatalf("SetBinding failed: %v", err)
 	}
 
@@ -92,7 +92,7 @@ func TestBackendBindingManager_SetBinding_LocalAI(t *testing.T) {
 	manager := NewBackendBindingManager(tmpDir, logger)
 
 	// Set binding to LocalAI
-	if err := manager.SetBinding(BackendLocalAI); err != nil {
+	if err = manager.SetBinding(BackendLocalAI); err != nil {
 		t.Fatalf("SetBinding failed: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func TestBackendBindingManager_SwitchBackend_NoChange(t *testing.T) {
 	manager := NewBackendBindingManager(tmpDir, logger)
 
 	// Set to Ollama
-	if err := manager.SetBinding(BackendOllama); err != nil {
+	if err = manager.SetBinding(BackendOllama); err != nil {
 		t.Fatal(err)
 	}
 

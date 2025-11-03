@@ -108,7 +108,7 @@ func TestSender_Creation(t *testing.T) {
 	sender := NewSender(logger)
 
 	if sender == nil {
-		t.Error("Expected sender to be created")
+		t.Fatal("Expected sender to be created")
 	}
 
 	if sender.logger == nil {

@@ -234,7 +234,7 @@ func (m Model) toggleBackend() Model {
 		target = services.BackendLocalAI
 	}
 
-	if err := openwebui.SwitchBackend(target); err != nil {
+	if err = openwebui.SwitchBackend(target); err != nil {
 		m.statusMessage = fmt.Sprintf("Backend toggle failed: %v", err)
 		return m
 	}

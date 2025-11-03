@@ -563,3 +563,11 @@
   - CLI erhält WoL-Persistenz (`wol_config.json`, `wol-apply`), HTTP→WoL-Relay (`wol-relay`) sowie erweiterten TUI-Hauptscreen (GPU, Idle, Backend-Toggle)
   - Audit-Report um Remediation-Sektion ergänzt; Tests laufen weiterhin nicht wegen defektem Go-Stdlib-Setup (`encoding/json` fehlt)
 - **Status:** Abgeschlossen — Audit-relevante Lücken geschlossen, Funktionen implementiert, Umgebungsfehler bei `go test` dokumentiert.
+
+## 2025-11-04 11:45 CET — Lint Remediation
+- **Aufgabe:** govet/staticcheck-Befunde aus dem Lint-Job von PR #4 (Feature/epic rest #9) bereinigen.
+- **Vorgehen:**
+  - Shadowing-Warnungen beseitigt (`backend_binding_test.go`, `updater_test.go`, `tui/model.go`, `wol/detector.go`).
+  - Staticcheck-SA5011 durch frühes `t.Fatal` in WoL-Tests entschärft und Health-Check-Defer angepasst.
+  - `gofmt` über alle geänderten Dateien ausgeführt.
+- **Status:** Abgeschlossen — Quellcode angepasst; `golangci-lint` lokal nicht verfügbar und `go test ./...` scheitert wegen defekter Stdlib im Sandbox-Go (fehlende Pakete wie `encoding/json`). Hinweise im Review mitgegeben.

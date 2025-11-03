@@ -35,13 +35,13 @@ func TestServiceUpdater_Update_NewImage(t *testing.T) {
 	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir, nil)
 
 	// Run update
-	if err := updater.Update(); err != nil {
+	if err = updater.Update(); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
 
 	// Verify plan was saved
 	planPath := filepath.Join(tmpDir, "ollama_update_plan.json")
-	if _, err := os.Stat(planPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(planPath); os.IsNotExist(statErr) {
 		t.Error("Update plan was not saved")
 	}
 
@@ -93,7 +93,7 @@ func TestServiceUpdater_Update_HealthFails(t *testing.T) {
 	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir, nil)
 
 	// Run update - should fail due to health check and rollback
-	if err := updater.Update(); err == nil {
+	if err = updater.Update(); err == nil {
 		t.Error("Expected update to fail due to health check, but it succeeded")
 	}
 
@@ -139,7 +139,7 @@ func TestServiceUpdater_Update_NoChange(t *testing.T) {
 	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir, nil)
 
 	// Run update
-	if err := updater.Update(); err != nil {
+	if err = updater.Update(); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
 

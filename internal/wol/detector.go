@@ -47,7 +47,7 @@ func (d *Detector) DetectWoL(iface string) WoLStatus {
 	status.MAC = netIface.HardwareAddr.String()
 
 	// Check if ethtool is available
-	if _, err := exec.LookPath("ethtool"); err != nil {
+	if _, err = exec.LookPath("ethtool"); err != nil {
 		status.ErrorMessage = "ethtool not found (required for WoL detection)"
 		d.logger.Warn("wol.detect.ethtool_not_found", "ethtool not available", map[string]interface{}{
 			"interface": iface,
