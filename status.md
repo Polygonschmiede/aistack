@@ -513,3 +513,43 @@
   - ✓ Graceful Error-Handling und Validierung
   - ✓ Clean Architecture: Backend-State (BackendBindingManager) getrennt von Service-Operations (OpenWebUIService)
   - Hinweis: Docker erforderlich für Service-Restart und Compose-Environment-Handling
+
+## 2025-11-03 18:30 CET — EP-010 Implementation (Service: LocalAI Orchestration)
+- **Aufgabe:** EP-010 "Service: LocalAI Orchestration" vollständig implementieren, inklusive Lifecycle-Commands und Remove mit Volume-Handling.
+- **Vorgehen:**
+  - Bestehende LocalAI-Implementation analysiert (bereits in EP-003 und EP-008 teilweise implementiert):
+    - LocalAI Service mit Update-Funktionalität bereits vorhanden (`internal/services/localai.go`)
+    - Compose-Template mit Health-Check auf /healthz bereits konfiguriert (`compose/localai.yaml`)
+    - LocalAI im ServiceManager registriert und Teil des "standard-gpu" Profils
+    - Lifecycle-Commands (install/start/stop) bereits durch Service-Interface verfügbar
+  - CLI remove command implementiert (`cmd/aistack/main.go`, Story T-020):
+    - `runRemove()`: Service-Removal mit optionalem --purge Flag
+    - Default: Volumes werden behalten (keepData = true)
+    - Mit --purge: Volumes werden gelöscht (keepData = false)
+    - Benutzerfreundliche Ausgabe mit Warnung bei --purge
+    - Validierung für Service-Namen mit hilfreichen Fehlermeldungen
+  - Help-Text erweitert:
+    - `aistack remove <service> [--purge]` dokumentiert
+    - Erklärung: "Remove a service (keeps data by default)"
+  - Comprehensive Unit Tests erweitert (`internal/services/service_test.go`):
+    - `TestBaseService_Remove_KeepData`: Verifiziert dass Volumes bei keepData=true erhalten bleiben
+    - `TestBaseService_Remove_PurgeData`: Verifiziert dass Volumes bei keepData=false entfernt werden
+    - `TestLocalAIService_Update`: Verifiziert Update-Funktionalität für LocalAI
+    - MockRuntime erweitert mit `RemovedVolumes` Tracking für Test-Verifikation
+  - Testing & Validation:
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/services/... -v`: Alle 37 Service-Tests erfolgreich (17.58s)
+    - ✓ `./dist/aistack help`: Remove-Befehl dokumentiert
+    - ✓ LocalAI Service Creation, Update und Remove getestet
+- **Status:** Abgeschlossen — EP-010 implementiert. DoD erfüllt:
+  - ✓ Story T-020: LocalAI Lifecycle Commands (install/start/stop/remove)
+  - ✓ CLI-Befehl: remove <service> [--purge]
+  - ✓ Health-Check auf /healthz (bereits in compose/localai.yaml)
+  - ✓ Remove vs. Purge: Volume bleibt bei Default, wird mit --purge entfernt
+  - ✓ Logs-Funktionalität vorhanden (Logs() Methode im Service Interface)
+  - ✓ LocalAI im Manager registriert und Teil von standard-gpu Profil
+  - ✓ Update-Funktionalität für LocalAI (ServiceUpdater Integration)
+  - ✓ Unit-Tests mit >80% Coverage-Ziel (3 neue Tests, alle erfolgreich)
+  - ✓ Strukturiertes Logging für service.remove Events
+  - ✓ Graceful Error-Handling und Validierung
+  - Hinweis: Docker erforderlich für Container-Operations und Volume-Management

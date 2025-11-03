@@ -397,6 +397,79 @@ Compare with requested backend
 - Idempotency testing (switch to same backend)
 - State persistence verification (JSON format, file creation)
 
+### Service Lifecycle & Volume Management
+
+The service lifecycle subsystem provides full lifecycle management for all services with intelligent volume handling:
+
+**Service Interface**:
+- `Install()`: Ensures network, volumes, and starts service
+- `Start()`: Starts service via docker compose up
+- `Stop()`: Stops service via docker compose down
+- `Remove(keepData bool)`: Removes service with optional volume purge
+- `Update()`: Updates to latest image with rollback (see Update & Rollback Architecture)
+- `Status()`: Returns service state and health
+- `Logs(tail int)`: Retrieves container logs
+
+**Remove Workflow**:
+```
+CLI: aistack remove <service> [--purge]
+  ↓
+Parse flags: keepData = !purge
+  ↓
+service.Remove(keepData)
+  ↓
+Stop service (graceful, errors logged but continue)
+  ↓
+If keepData = false (--purge specified):
+  ├─ For each volume in service.volumes:
+  │   └─ runtime.RemoveVolume(volume)
+  └─ Log volume removal (warnings on errors)
+  ↓
+If keepData = true (default):
+  └─ Volumes preserved
+  ↓
+Log service.removed event
+```
+
+**Volume Preservation Strategy**:
+- **Default behavior**: Volumes are kept when removing a service
+- **Rationale**: Data preservation for reinstalls, prevents accidental data loss
+- **Purge option**: `--purge` flag explicitly removes all data volumes
+- **Use cases**:
+  - Remove without purge: Temporary service removal, troubleshooting, upgrades
+  - Remove with purge: Complete cleanup, fresh start, disk space recovery
+
+**Service-Specific Volumes**:
+- Ollama: `ollama_data` (models and configuration)
+- OpenWebUI: `openwebui_data` (user data, conversations)
+- LocalAI: `localai_models` (AI models and cache)
+
+**CLI Commands**:
+- `aistack install <service>`: Install service with volumes
+- `aistack start <service>`: Start service
+- `aistack stop <service>`: Stop service (volumes remain)
+- `aistack remove <service>`: Remove service (keep volumes)
+- `aistack remove <service> --purge`: Remove service and delete all volumes
+- `aistack status`: Show status of all services
+
+**Event Logging**:
+- `service.install.start`: Installation started
+- `service.install.complete`: Installation completed
+- `service.start`: Service starting
+- `service.started`: Service started successfully
+- `service.stop`: Service stopping
+- `service.stoped`: Service stopped successfully
+- `service.remove`: Service removal initiated (includes keep_data flag)
+- `service.removed`: Service removed successfully
+- `service.remove.stop_error`: Error during stop (logged but continues)
+- `service.remove.volume_error`: Error removing volume (logged but continues)
+
+**Testing Pattern**:
+- MockRuntime tracks removed volumes in `RemovedVolumes` slice
+- Tests verify volume preservation with keepData=true
+- Tests verify volume deletion with keepData=false
+- Graceful degradation on errors (logged warnings, no hard failures)
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

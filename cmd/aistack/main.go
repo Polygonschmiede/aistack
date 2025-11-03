@@ -47,6 +47,9 @@ func main() {
 		case "logs":
 			runServiceCommand("logs")
 			return
+		case "remove":
+			runRemove()
+			return
 		case "backend":
 			runBackendSwitch()
 			return
@@ -259,6 +262,62 @@ func runServiceCommand(command string) {
 			os.Exit(1)
 		}
 		fmt.Print(logs)
+	}
+}
+
+// runRemove removes a service (optionally purging data volumes)
+// Story T-020: LocalAI Lifecycle Commands
+func runRemove() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: aistack remove <service> [--purge]")
+		fmt.Println()
+		fmt.Println("Removes a service. Data volumes are kept by default.")
+		fmt.Println("Use --purge to also remove data volumes.")
+		os.Exit(1)
+	}
+
+	serviceName := os.Args[2]
+	service, err := manager.GetService(serviceName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Println("Valid services: ollama, openwebui, localai")
+		os.Exit(1)
+	}
+
+	// Check for --purge flag
+	purge := false
+	if len(os.Args) >= 4 && os.Args[3] == "--purge" {
+		purge = true
+	}
+
+	keepData := !purge
+
+	if purge {
+		fmt.Printf("Removing service %s and purging all data volumes...\n", serviceName)
+		fmt.Println("⚠️  Warning: This will permanently delete all data!")
+	} else {
+		fmt.Printf("Removing service %s (keeping data volumes)...\n", serviceName)
+	}
+
+	if err := service.Remove(keepData); err != nil {
+		fmt.Fprintf(os.Stderr, "\n❌ Remove failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n✓ Service %s removed successfully\n", serviceName)
+	if keepData {
+		fmt.Println("  Data volumes were preserved. Use --purge to remove them.")
+	} else {
+		fmt.Println("  All data volumes were purged.")
 	}
 }
 
@@ -698,6 +757,7 @@ Usage:
   aistack stop <service>           Stop a service
   aistack update <service>         Update a service to latest version (with rollback)
   aistack logs <service> [lines]   Show service logs (default: 100 lines)
+  aistack remove <service> [--purge] Remove a service (keeps data by default)
   aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
   aistack status                   Show status of all services
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability

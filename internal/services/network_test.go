@@ -7,20 +7,24 @@ import (
 
 // MockRuntime is a mock implementation of Runtime for testing
 type MockRuntime struct {
-	networks   map[string]bool
-	volumes    map[string]bool
-	isRunning  bool
-	imageID    string
-	newImageID string
+	networks       map[string]bool
+	volumes        map[string]bool
+	RemovedVolumes []string // Track removed volumes for testing
+	isRunning      bool
+	imageID        string
+	newImageID     string
+	ImageID        string // Exposed for test setup
 }
 
 func NewMockRuntime() *MockRuntime {
 	return &MockRuntime{
-		networks:   make(map[string]bool),
-		volumes:    make(map[string]bool),
-		isRunning:  true,
-		imageID:    "sha256:mock123",
-		newImageID: "sha256:mock456",
+		networks:       make(map[string]bool),
+		volumes:        make(map[string]bool),
+		RemovedVolumes: make([]string, 0),
+		isRunning:      true,
+		imageID:        "sha256:mock123",
+		newImageID:     "sha256:mock456",
+		ImageID:        "sha256:mock123",
 	}
 }
 
@@ -65,6 +69,7 @@ func (m *MockRuntime) GetContainerLogs(name string, tail int) (string, error) {
 }
 
 func (m *MockRuntime) RemoveVolume(name string) error {
+	m.RemovedVolumes = append(m.RemovedVolumes, name)
 	delete(m.volumes, name)
 	return nil
 }
