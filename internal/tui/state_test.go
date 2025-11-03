@@ -28,7 +28,7 @@ func TestUIStateManager_SaveAndLoad(t *testing.T) {
 	}
 
 	// Save state
-	if err := manager.Save(state); err != nil {
+	if err = manager.Save(state); err != nil {
 		t.Fatalf("Failed to save state: %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestUIStateManager_SaveError(t *testing.T) {
 	errorMsg := "connection failed"
 
 	// Save error
-	if err := manager.SaveError(errorMsg); err != nil {
+	if err = manager.SaveError(errorMsg); err != nil {
 		t.Fatalf("Failed to save error: %v", err)
 	}
 
@@ -127,12 +127,12 @@ func TestUIStateManager_ClearError(t *testing.T) {
 		Updated:       time.Now().UTC(),
 	}
 
-	if err := manager.Save(state); err != nil {
+	if err = manager.Save(state); err != nil {
 		t.Fatal(err)
 	}
 
 	// Clear error
-	if err := manager.ClearError(); err != nil {
+	if err = manager.ClearError(); err != nil {
 		t.Fatalf("Failed to clear error: %v", err)
 	}
 
@@ -165,19 +165,19 @@ func TestUIStateManager_AtomicWrite(t *testing.T) {
 	}
 
 	// Save state
-	if err := manager.Save(state); err != nil {
+	if err = manager.Save(state); err != nil {
 		t.Fatalf("Failed to save state: %v", err)
 	}
 
 	// Verify temp file doesn't exist
 	tmpPath := filepath.Join(tmpDir, "ui_state.json.tmp")
-	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+	if _, err = os.Stat(tmpPath); !os.IsNotExist(err) {
 		t.Errorf("Temp file should not exist after save")
 	}
 
 	// Verify actual file exists
 	statePath := filepath.Join(tmpDir, "ui_state.json")
-	if _, err := os.Stat(statePath); err != nil {
+	if _, err = os.Stat(statePath); err != nil {
 		t.Errorf("State file should exist: %v", err)
 	}
 }

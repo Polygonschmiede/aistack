@@ -836,3 +836,11 @@
   - ✓ Graceful Degradation bei GPU unavailable
   - ⏳ Dry-Run-Option für Repair (Future Enhancement)
   - ⏳ Retry-Backoff, Circuit-Breaker (Future Enhancement)
+
+## 2025-11-03 22:09 CET — Linting-Fixes & Agent-Guidance
+- **Aufgabe:** Govet-Schattenvariablen in Tests und Services beheben, dazu Agent-Anleitungen anpassen.
+- **Durchgeführt:**
+  - Shadow-Warnungen in betroffenen Go-Tests und `internal/services/repair.go` mit `err = call()`-Pattern beseitigt.
+  - `AGENTS.md` und `CLAUDE.md` um Shadow-Lint-Hinweis ergänzt.
+- **Tests:** `go test ./...` (fehlt Zugriff auf `$HOME/Library/Caches/go-build`, daher im Sandbox-Modus fehlgeschlagen).
+- **Status:** Abgeschlossen — Lint-Fixes erledigt, Agent-Dokus angepasst; Tests außerhalb der Sandbox erneut ausführen.

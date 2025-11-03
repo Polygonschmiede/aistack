@@ -16,6 +16,7 @@
 - Use PascalCase for exported identifiers and camelCase for package-local names; keep package names singular and lowercase.
 - Group related logic into focused packages; avoid cyclic imports and keep public APIs minimal.
 - Favor clear guard clauses over deeply nested conditionals; document non-obvious business rules with brief comments.
+- Avoid shadowing existing variables (especially `err`); if an `err` is already in scope, reuse it with `err = call()` or declare it once before loops instead of `if err := ...`—the `shadow` linter runs in CI.
 
 ## Testing Guidelines
 - Use Go’s standard `testing` package with table-driven tests for input/output coverage.

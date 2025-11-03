@@ -74,7 +74,7 @@ func (m *Manager) RepairService(serviceName string) (RepairResult, error) {
 		"service": serviceName,
 	})
 
-	if err := service.Stop(); err != nil {
+	if err = service.Stop(); err != nil {
 		// Log warning but continue - service might already be stopped
 		m.logger.Warn("service.repair.stop_error", "Error stopping service (continuing)", map[string]interface{}{
 			"service": serviceName,
@@ -88,7 +88,7 @@ func (m *Manager) RepairService(serviceName string) (RepairResult, error) {
 	})
 
 	containerName := fmt.Sprintf("aistack-%s", serviceName)
-	if err := m.runtime.RemoveContainer(containerName); err != nil {
+	if err = m.runtime.RemoveContainer(containerName); err != nil {
 		// Log warning but continue - container might not exist
 		m.logger.Warn("service.repair.remove_error", "Error removing container (continuing)", map[string]interface{}{
 			"service":   serviceName,
@@ -102,7 +102,7 @@ func (m *Manager) RepairService(serviceName string) (RepairResult, error) {
 		"service": serviceName,
 	})
 
-	if err := service.Start(); err != nil {
+	if err = service.Start(); err != nil {
 		result.Success = false
 		result.ErrorMessage = fmt.Sprintf("Failed to start service: %v", err)
 		m.logger.Error("service.repair.failed", "Failed to start service during repair", map[string]interface{}{

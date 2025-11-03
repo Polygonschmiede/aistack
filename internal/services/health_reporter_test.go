@@ -178,7 +178,7 @@ func TestHealthReporter_SaveReport(t *testing.T) {
 	}
 
 	// Verify file exists
-	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+	if _, err = os.Stat(reportPath); os.IsNotExist(err) {
 		t.Fatal("Report file was not created")
 	}
 

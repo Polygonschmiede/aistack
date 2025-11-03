@@ -193,7 +193,7 @@ func TestLocalAIManager_SyncState(t *testing.T) {
 	manager := NewLocalAIManager(tmpDir, modelsDir, logger)
 
 	// Sync state
-	if err := manager.SyncState(); err != nil {
+	if err = manager.SyncState(); err != nil {
 		t.Fatalf("Failed to sync state: %v", err)
 	}
 
@@ -363,7 +363,7 @@ func TestLocalAIManager_UpdateLastUsed(t *testing.T) {
 	manager := NewLocalAIManager(tmpDir, modelsDir, logger)
 
 	// Sync state first
-	if err := manager.SyncState(); err != nil {
+	if err = manager.SyncState(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -379,7 +379,7 @@ func TestLocalAIManager_UpdateLastUsed(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Update last used
-	if err := manager.UpdateLastUsed("test.gguf"); err != nil {
+	if err = manager.UpdateLastUsed("test.gguf"); err != nil {
 		t.Fatalf("Failed to update last used: %v", err)
 	}
 

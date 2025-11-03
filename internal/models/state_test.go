@@ -40,7 +40,7 @@ func TestStateManager_SaveAndLoad(t *testing.T) {
 	}
 
 	// Save state
-	if err := manager.Save(state); err != nil {
+	if err = manager.Save(state); err != nil {
 		t.Fatalf("Failed to save state: %v", err)
 	}
 
@@ -106,7 +106,7 @@ func TestStateManager_AddModel(t *testing.T) {
 		LastUsed: time.Now().UTC(),
 	}
 
-	if err := manager.AddModel(model); err != nil {
+	if err = manager.AddModel(model); err != nil {
 		t.Fatalf("Failed to add model: %v", err)
 	}
 
@@ -143,7 +143,7 @@ func TestStateManager_UpdateModel(t *testing.T) {
 		LastUsed: time.Now().UTC(),
 	}
 
-	if err := manager.AddModel(model); err != nil {
+	if err = manager.AddModel(model); err != nil {
 		t.Fatalf("Failed to add model: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestStateManager_UpdateModel(t *testing.T) {
 		LastUsed: time.Now().UTC().Add(time.Hour),
 	}
 
-	if err := manager.AddModel(updatedModel); err != nil {
+	if err = manager.AddModel(updatedModel); err != nil {
 		t.Fatalf("Failed to update model: %v", err)
 	}
 
@@ -196,13 +196,13 @@ func TestStateManager_RemoveModel(t *testing.T) {
 	}
 
 	for _, model := range models {
-		if err := manager.AddModel(model); err != nil {
+		if err = manager.AddModel(model); err != nil {
 			t.Fatalf("Failed to add model: %v", err)
 		}
 	}
 
 	// Remove middle model
-	if err := manager.RemoveModel("model2"); err != nil {
+	if err = manager.RemoveModel("model2"); err != nil {
 		t.Fatalf("Failed to remove model: %v", err)
 	}
 
@@ -252,7 +252,7 @@ func TestStateManager_GetStats(t *testing.T) {
 	}
 
 	for _, model := range models {
-		if err := manager.AddModel(model); err != nil {
+		if err = manager.AddModel(model); err != nil {
 			t.Fatalf("Failed to add model: %v", err)
 		}
 	}
@@ -305,7 +305,7 @@ func TestStateManager_GetOldestModels(t *testing.T) {
 	}
 
 	for _, model := range models {
-		if err := manager.AddModel(model); err != nil {
+		if err = manager.AddModel(model); err != nil {
 			t.Fatalf("Failed to add model: %v", err)
 		}
 	}
@@ -353,7 +353,7 @@ func TestStateManager_AtomicWrite(t *testing.T) {
 	}
 
 	// Save state
-	if err := manager.Save(state); err != nil {
+	if err = manager.Save(state); err != nil {
 		t.Fatalf("Failed to save state: %v", err)
 	}
 
