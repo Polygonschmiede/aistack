@@ -17,6 +17,7 @@ type UpdatePlan struct {
 	OldImageID      string    `json:"old_image_id"`
 	NewImage        string    `json:"new_image"`
 	NewImageID      string    `json:"new_image_id,omitempty"`
+	PullReference   string    `json:"pull_reference,omitempty"`
 	StartedAt       time.Time `json:"started_at"`
 	CompletedAt     time.Time `json:"completed_at,omitempty"`
 	Status          string    `json:"status"` // pending, completed, rolled_back, failed
@@ -31,10 +32,11 @@ type ServiceUpdater struct {
 	stateDir    string
 	imageName   string
 	healthCheck HealthChecker
+	imageLock   *VersionLock
 }
 
 // NewServiceUpdater creates a new service updater
-func NewServiceUpdater(service Service, runtime Runtime, imageName string, healthCheck HealthChecker, logger *logging.Logger, stateDir string) *ServiceUpdater {
+func NewServiceUpdater(service Service, runtime Runtime, imageName string, healthCheck HealthChecker, logger *logging.Logger, stateDir string, lock *VersionLock) *ServiceUpdater {
 	return &ServiceUpdater{
 		service:     service,
 		runtime:     runtime,
@@ -42,27 +44,35 @@ func NewServiceUpdater(service Service, runtime Runtime, imageName string, healt
 		stateDir:    stateDir,
 		imageName:   imageName,
 		healthCheck: healthCheck,
+		imageLock:   lock,
 	}
 }
 
 // Update performs a service update with health validation and rollback on failure
 // Story T-018: Implements update with health-gating and automatic rollback
 func (u *ServiceUpdater) Update() error {
+	ref, err := u.resolveImageReference()
+	if err != nil {
+		return err
+	}
+
 	u.logger.Info("service.update.start", fmt.Sprintf("Starting update for %s", u.service.Name()), map[string]interface{}{
 		"service": u.service.Name(),
-		"image":   u.imageName,
+		"image":   ref.TagRef,
+		"pull":    ref.PullRef,
 	})
 
 	// Create update plan
 	plan := &UpdatePlan{
-		ServiceName: u.service.Name(),
-		NewImage:    u.imageName,
-		StartedAt:   time.Now(),
-		Status:      "pending",
+		ServiceName:   u.service.Name(),
+		NewImage:      ref.TagRef,
+		PullReference: ref.PullRef,
+		StartedAt:     time.Now(),
+		Status:        "pending",
 	}
 
 	// Get current image ID for rollback
-	oldImageID, err := u.runtime.GetImageID(u.imageName)
+	oldImageID, err := u.runtime.GetImageID(ref.TagRef)
 	if err != nil {
 		// Service might not be installed yet, this is OK
 		u.logger.Warn("service.update.no_old_image", "No existing image found", map[string]interface{}{
@@ -78,20 +88,29 @@ func (u *ServiceUpdater) Update() error {
 	}
 
 	// Pull new image
-	u.logger.Info("service.update.pull", fmt.Sprintf("Pulling new image: %s", u.imageName), map[string]interface{}{
+	u.logger.Info("service.update.pull", fmt.Sprintf("Pulling new image: %s", ref.PullRef), map[string]interface{}{
 		"service": u.service.Name(),
-		"image":   u.imageName,
+		"image":   ref.PullRef,
 	})
 
-	if err := u.runtime.PullImage(u.imageName); err != nil {
+	if err := u.runtime.PullImage(ref.PullRef); err != nil {
 		plan.Status = "failed"
 		plan.CompletedAt = time.Now()
 		_ = u.savePlan(plan)
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
+	if ref.PullRef != ref.TagRef {
+		if err := u.runtime.TagImage(ref.PullRef, ref.TagRef); err != nil {
+			plan.Status = "failed"
+			plan.CompletedAt = time.Now()
+			_ = u.savePlan(plan)
+			return fmt.Errorf("failed to tag image %s as %s: %w", ref.PullRef, ref.TagRef, err)
+		}
+	}
+
 	// Get new image ID
-	newImageID, err := u.runtime.GetImageID(u.imageName)
+	newImageID, err := u.runtime.GetImageID(ref.TagRef)
 	if err != nil {
 		plan.Status = "failed"
 		plan.CompletedAt = time.Now()
@@ -197,8 +216,9 @@ func (u *ServiceUpdater) Rollback(plan *UpdatePlan) error {
 		})
 	}
 
-	// Docker will use the old image ID automatically when we restart
-	// since the image is still cached locally
+	if err := u.runtime.TagImage(plan.OldImageID, plan.NewImage); err != nil {
+		return fmt.Errorf("failed to retag image during rollback: %w", err)
+	}
 
 	// Start service (will use old image)
 	if err := u.service.Start(); err != nil {
@@ -238,6 +258,48 @@ func (u *ServiceUpdater) savePlan(plan *UpdatePlan) error {
 
 	if err := os.WriteFile(planPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write plan: %w", err)
+	}
+
+	return nil
+}
+
+func (u *ServiceUpdater) resolveImageReference() (ImageReference, error) {
+	if u.imageLock == nil {
+		return ImageReference{PullRef: u.imageName, TagRef: u.imageName}, nil
+	}
+
+	ref, err := u.imageLock.Resolve(u.service.Name(), u.imageName)
+	if err != nil {
+		return ImageReference{}, err
+	}
+
+	if ref.PullRef == "" {
+		ref.PullRef = u.imageName
+	}
+	if ref.TagRef == "" {
+		ref.TagRef = u.imageName
+	}
+
+	return ref, nil
+}
+
+// EnforceImagePolicy ensures the configured image reference is present and tagged
+func (u *ServiceUpdater) EnforceImagePolicy() error {
+	ref, err := u.resolveImageReference()
+	if err != nil {
+		return err
+	}
+
+	if ref.PullRef == ref.TagRef {
+		return nil
+	}
+
+	if err := u.runtime.PullImage(ref.PullRef); err != nil {
+		return fmt.Errorf("failed to pull image %s: %w", ref.PullRef, err)
+	}
+
+	if err := u.runtime.TagImage(ref.PullRef, ref.TagRef); err != nil {
+		return fmt.Errorf("failed to tag image %s as %s: %w", ref.PullRef, ref.TagRef, err)
 	}
 
 	return nil

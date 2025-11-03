@@ -22,9 +22,9 @@ func NewMockManager() *MockManager {
 	}
 
 	// Register mock services
-	manager.services["ollama"] = NewOllamaService("./compose", runtime, logger)
-	manager.services["openwebui"] = NewOpenWebUIService("./compose", runtime, logger)
-	manager.services["localai"] = NewLocalAIService("./compose", runtime, logger)
+	manager.services["ollama"] = NewOllamaService("./compose", runtime, logger, nil)
+	manager.services["openwebui"] = NewOpenWebUIService("./compose", runtime, logger, nil)
+	manager.services["localai"] = NewLocalAIService("./compose", runtime, logger, nil)
 
 	return &MockManager{Manager: manager}
 }

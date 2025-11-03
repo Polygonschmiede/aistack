@@ -15,11 +15,12 @@ const (
 // Story T-008: Compose-Template: LocalAI Service (Health & Volume)
 type LocalAIService struct {
 	*BaseService
-	updater *ServiceUpdater
+	updater  *ServiceUpdater
+	registry *LocalAIModelsRegistry
 }
 
 // NewLocalAIService creates a new LocalAI service
-func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logger) *LocalAIService {
+func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock) *LocalAIService {
 	healthCheck := DefaultHealthCheck("http://localhost:8080/healthz")
 	volumes := []string{"localai_models"}
 
@@ -31,15 +32,27 @@ func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logge
 		stateDir = "/var/lib/aistack"
 	}
 
-	updater := NewServiceUpdater(base, runtime, LocalAIImageName, healthCheck, logger, stateDir)
+	updater := NewServiceUpdater(base, runtime, LocalAIImageName, healthCheck, logger, stateDir, lock)
+	registry := NewLocalAIModelsRegistry(stateDir, logger)
+
+	base.SetPreStartHook(func() error {
+		if err := updater.EnforceImagePolicy(); err != nil {
+			return err
+		}
+		return registry.Ensure()
+	})
 
 	return &LocalAIService{
 		BaseService: base,
 		updater:     updater,
+		registry:    registry,
 	}
 }
 
 // Update updates the LocalAI service to the latest version
 func (s *LocalAIService) Update() error {
+	if err := s.registry.Ensure(); err != nil {
+		return err
+	}
 	return s.updater.Update()
 }

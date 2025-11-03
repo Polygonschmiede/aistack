@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 	"aistack/internal/services"
 	"aistack/internal/tui"
 	"aistack/internal/wol"
+	"aistack/internal/wol/relay"
 )
 
 const version = "0.1.0-dev"
@@ -68,6 +71,12 @@ func main() {
 		case "wol-send":
 			runWoLSend()
 			return
+		case "wol-apply":
+			runWoLApply()
+			return
+		case "wol-relay":
+			runWoLRelay()
+			return
 		case "version":
 			fmt.Printf("aistack version %s\n", version)
 			return
@@ -93,8 +102,10 @@ func runTUI() {
 		"ts":      startTime.UTC().Format(time.RFC3339),
 	})
 
+	composeDir := resolveComposeDir()
+
 	// Create and run the TUI
-	p := tea.NewProgram(tui.NewModel())
+	p := tea.NewProgram(tui.NewModel(logger, composeDir))
 
 	// Run the program and capture exit reason
 	finalModel, err := p.Run()
@@ -549,6 +560,16 @@ func runWoLCheck() {
 	fmt.Println()
 	fmt.Println("⚠️  Note: BIOS/UEFI WoL settings are outside the scope of this tool.")
 	fmt.Println("   Ensure 'Wake on LAN' is enabled in your system BIOS/UEFI.")
+
+	if cfg, err := wol.LoadConfig(); err == nil {
+		fmt.Println()
+		fmt.Printf("Persisted config: %s\n", wol.ConfigPath())
+		fmt.Printf("  Stored interface: %s (mode: %s)\n", cfg.Interface, cfg.WoLState)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		logger.Warn("wol.config.read_failed", "Failed to read persisted WoL config", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // runWoLSetup enables Wake-on-LAN on a specified interface
@@ -584,6 +605,30 @@ func runWoLSetup() {
 		fmt.Printf("✓ Wake-on-LAN is already enabled on %s\n", iface)
 		fmt.Printf("  Current mode: %s\n", status.CurrentMode)
 		fmt.Printf("  MAC Address: %s\n", status.MAC)
+
+		broadcast, bErr := wol.GetBroadcastAddr(iface)
+		if bErr != nil {
+			logger.Warn("wol.broadcast.lookup_failed", "Failed to resolve broadcast address", map[string]interface{}{
+				"interface": iface,
+				"error":     bErr.Error(),
+			})
+		}
+
+		cfg := wol.WoLConfig{
+			Interface:   iface,
+			MAC:         status.MAC,
+			WoLState:    status.CurrentMode,
+			BroadcastIP: broadcast,
+		}
+
+		if err := wol.SaveConfig(cfg); err != nil {
+			logger.Warn("wol.config.save_failed", "Failed to persist WoL config", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			fmt.Printf("  Persisted config: %s\n", wol.ConfigPath())
+		}
+
 		return
 	}
 
@@ -603,9 +648,33 @@ func runWoLSetup() {
 		fmt.Printf("✓ Wake-on-LAN successfully enabled on %s\n", iface)
 		fmt.Printf("  Mode: %s (magic packet)\n", status.CurrentMode)
 		fmt.Printf("  MAC Address: %s\n", status.MAC)
-		fmt.Println()
-		fmt.Println("⚠️  Note: This setting may not persist across reboots.")
-		fmt.Println("   Consider adding a udev rule or systemd service to make it permanent.")
+
+		broadcast, bErr := wol.GetBroadcastAddr(iface)
+		if bErr != nil {
+			logger.Warn("wol.broadcast.lookup_failed", "Failed to resolve broadcast address", map[string]interface{}{
+				"interface": iface,
+				"error":     bErr.Error(),
+			})
+		}
+
+		cfg := wol.WoLConfig{
+			Interface:   iface,
+			MAC:         status.MAC,
+			WoLState:    status.CurrentMode,
+			BroadcastIP: broadcast,
+		}
+
+		if err := wol.SaveConfig(cfg); err != nil {
+			logger.Warn("wol.config.save_failed", "Failed to persist WoL config", map[string]interface{}{
+				"error": err.Error(),
+			})
+			fmt.Println()
+			fmt.Println("⚠️  WoL enabled but config persistence failed — see logs for details")
+		} else {
+			fmt.Println()
+			fmt.Printf("Config persisted to: %s\n", wol.ConfigPath())
+			fmt.Println("A udev rule will reapply this setting on interface events.")
+		}
 	} else {
 		fmt.Fprintf(os.Stderr, "❌ WoL enable command succeeded but verification failed\n")
 		os.Exit(1)
@@ -662,6 +731,78 @@ func runWoLSend() {
 	fmt.Println("  2. Wake-on-LAN is enabled in the OS (ethtool)")
 	fmt.Println("  3. The system is connected to power")
 	fmt.Println("  4. The network switch supports broadcast packets")
+}
+
+// runWoLApply reapplies persisted WoL configuration (used by udev/systemd)
+func runWoLApply() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	cfg, err := wol.LoadConfig()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			logger.Info("wol.apply.config_missing", "No persisted WoL config found", nil)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "❌ Failed to load WoL config: %v\n", err)
+		os.Exit(1)
+	}
+
+	var targetIface string
+	if len(os.Args) > 2 {
+		if os.Args[2] == "--interface" && len(os.Args) > 3 {
+			targetIface = os.Args[3]
+		} else {
+			targetIface = os.Args[2]
+		}
+	}
+
+	if targetIface != "" && targetIface != cfg.Interface {
+		logger.Info("wol.apply.skip_interface", "Configured interface does not match trigger", map[string]interface{}{
+			"configured": cfg.Interface,
+			"requested":  targetIface,
+		})
+		return
+	}
+
+	detector := wol.NewDetector(logger)
+	if err := detector.ApplyConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to apply WoL config: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger.Info("wol.apply.success", "WoL configuration applied", map[string]interface{}{
+		"interface": cfg.Interface,
+		"mode":      cfg.WoLState,
+	})
+}
+
+func runWoLRelay() {
+	fs := flag.NewFlagSet("wol-relay", flag.ExitOnError)
+	listen := fs.String("listen", ":8081", "host:port to listen on")
+	key := fs.String("key", "", "shared secret key (or set AISTACK_WOL_RELAY_KEY)")
+
+	if err := fs.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to parse flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	relayKey := *key
+	if relayKey == "" {
+		relayKey = os.Getenv("AISTACK_WOL_RELAY_KEY")
+	}
+
+	if relayKey == "" {
+		fmt.Fprintf(os.Stderr, "Usage: aistack wol-relay [--listen :8081] --key <shared-secret>\n")
+		os.Exit(1)
+	}
+
+	logger := logging.NewLogger(logging.LevelInfo)
+	server := relay.NewServer(*listen, relayKey, logger)
+
+	if err := server.Serve(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Wol relay stopped: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // runBackendSwitch handles backend switching for Open WebUI
@@ -765,6 +906,8 @@ Usage:
   aistack wol-check                Check Wake-on-LAN status
   aistack wol-setup <interface>    Enable Wake-on-LAN on interface (requires root)
   aistack wol-send <mac> [ip]      Send Wake-on-LAN magic packet
+  aistack wol-apply [interface]    Reapply persisted WoL configuration (for udev/systemd)
+  aistack wol-relay [flags]        Start HTTP→WoL relay (use --key or AISTACK_WOL_RELAY_KEY)
   aistack version                  Print version information
   aistack help                     Show this help message
 

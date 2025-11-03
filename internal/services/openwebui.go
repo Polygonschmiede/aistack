@@ -22,7 +22,7 @@ type OpenWebUIService struct {
 }
 
 // NewOpenWebUIService creates a new Open WebUI service
-func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Logger) *OpenWebUIService {
+func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock) *OpenWebUIService {
 	healthCheck := DefaultHealthCheck("http://localhost:3000/")
 	volumes := []string{"openwebui_data"}
 
@@ -34,8 +34,25 @@ func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Log
 		stateDir = "/var/lib/aistack"
 	}
 
-	updater := NewServiceUpdater(base, runtime, OpenWebUIImageName, healthCheck, logger, stateDir)
+	updater := NewServiceUpdater(base, runtime, OpenWebUIImageName, healthCheck, logger, stateDir, lock)
 	bindingManager := NewBackendBindingManager(stateDir, logger)
+
+	base.SetPreStartHook(func() error {
+		if err := updater.EnforceImagePolicy(); err != nil {
+			return err
+		}
+
+		binding, err := bindingManager.GetBinding()
+		if err != nil {
+			return fmt.Errorf("failed to load backend binding: %w", err)
+		}
+
+		if err := os.Setenv("OLLAMA_BASE_URL", binding.URL); err != nil {
+			return fmt.Errorf("failed to set OLLAMA_BASE_URL: %w", err)
+		}
+
+		return nil
+	})
 
 	return &OpenWebUIService{
 		BaseService:    base,

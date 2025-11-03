@@ -1,14 +1,28 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"aistack/internal/logging"
 )
 
+func newTestModel(t *testing.T) Model {
+	t.Helper()
+	if err := os.Setenv("AISTACK_DISABLE_GPU_SCAN", "1"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Unsetenv("AISTACK_DISABLE_GPU_SCAN") })
+
+	logger := logging.NewLogger(logging.LevelError)
+	return NewModel(logger, "")
+}
+
 func TestNewModel(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 
 	if m.startTime.IsZero() {
 		t.Error("Expected startTime to be set, got zero time")
@@ -20,7 +34,7 @@ func TestNewModel(t *testing.T) {
 }
 
 func TestModelInit(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 	cmd := m.Init()
 
 	if cmd != nil {
@@ -29,7 +43,7 @@ func TestModelInit(t *testing.T) {
 }
 
 func TestModelUpdate_QuitOnQ(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 
 	// Test 'q' key
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
@@ -50,7 +64,7 @@ func TestModelUpdate_QuitOnQ(t *testing.T) {
 }
 
 func TestModelUpdate_QuitOnCtrlC(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 
 	// Test Ctrl+C
 	msg := tea.KeyMsg{Type: tea.KeyCtrlC}
@@ -71,7 +85,7 @@ func TestModelUpdate_QuitOnCtrlC(t *testing.T) {
 }
 
 func TestModelUpdate_OtherKey(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 
 	// Test other key (should not quit)
 	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
@@ -92,11 +106,11 @@ func TestModelUpdate_OtherKey(t *testing.T) {
 }
 
 func TestModelView_NotQuitting(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 	view := m.View()
 
 	// Check that view contains expected elements
-	expectedStrings := []string{"aistack", "Press 'q'", "quit"}
+	expectedStrings := []string{"GPU Readiness", "Idle Timer", "Backend Binding"}
 
 	for _, expected := range expectedStrings {
 		if !strings.Contains(view, expected) {
@@ -110,7 +124,7 @@ func TestModelView_NotQuitting(t *testing.T) {
 }
 
 func TestModelView_Quitting(t *testing.T) {
-	m := NewModel()
+	m := newTestModel(t)
 	m.quitting = true
 	view := m.View()
 

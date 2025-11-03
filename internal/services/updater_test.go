@@ -32,7 +32,7 @@ func TestServiceUpdater_Update_NewImage(t *testing.T) {
 		shouldPass: true,
 	}
 
-	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir)
+	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir, nil)
 
 	// Run update
 	if err := updater.Update(); err != nil {
@@ -90,7 +90,7 @@ func TestServiceUpdater_Update_HealthFails(t *testing.T) {
 		callCount:      0,
 	}
 
-	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir)
+	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir, nil)
 
 	// Run update - should fail due to health check and rollback
 	if err := updater.Update(); err == nil {
@@ -136,7 +136,7 @@ func TestServiceUpdater_Update_NoChange(t *testing.T) {
 		shouldPass: true,
 	}
 
-	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir)
+	updater := NewServiceUpdater(baseService, mockRuntime, "ollama/ollama:latest", healthCheck, logger, tmpDir, nil)
 
 	// Run update
 	if err := updater.Update(); err != nil {

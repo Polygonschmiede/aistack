@@ -21,7 +21,7 @@ type OllamaService struct {
 }
 
 // NewOllamaService creates a new Ollama service
-func NewOllamaService(composeDir string, runtime Runtime, logger *logging.Logger) *OllamaService {
+func NewOllamaService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock) *OllamaService {
 	healthCheck := DefaultHealthCheck("http://localhost:11434/api/tags")
 	volumes := []string{"ollama_data"}
 
@@ -33,7 +33,11 @@ func NewOllamaService(composeDir string, runtime Runtime, logger *logging.Logger
 		stateDir = "/var/lib/aistack"
 	}
 
-	updater := NewServiceUpdater(base, runtime, OllamaImageName, healthCheck, logger, stateDir)
+	updater := NewServiceUpdater(base, runtime, OllamaImageName, healthCheck, logger, stateDir, lock)
+
+	base.SetPreStartHook(func() error {
+		return updater.EnforceImagePolicy()
+	})
 
 	return &OllamaService{
 		BaseService: base,

@@ -36,7 +36,7 @@ func TestOllamaService_Creation(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewOllamaService("./compose", runtime, logger)
+	service := NewOllamaService("./compose", runtime, logger, nil)
 
 	if service.Name() != "ollama" {
 		t.Errorf("Expected name 'ollama', got: %s", service.Name())
@@ -47,7 +47,7 @@ func TestOpenWebUIService_Creation(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewOpenWebUIService("./compose", runtime, logger)
+	service := NewOpenWebUIService("./compose", runtime, logger, nil)
 
 	if service.Name() != "openwebui" {
 		t.Errorf("Expected name 'openwebui', got: %s", service.Name())
@@ -58,7 +58,7 @@ func TestLocalAIService_Creation(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewLocalAIService("./compose", runtime, logger)
+	service := NewLocalAIService("./compose", runtime, logger, nil)
 
 	if service.Name() != "localai" {
 		t.Errorf("Expected name 'localai', got: %s", service.Name())
@@ -117,7 +117,7 @@ func TestLocalAIService_Update(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewLocalAIService("./compose", runtime, logger)
+	service := NewLocalAIService("./compose", runtime, logger, nil)
 
 	// Set up mock to return different image IDs
 	runtime.ImageID = "old-image-id"

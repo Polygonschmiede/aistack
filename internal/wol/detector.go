@@ -127,62 +127,57 @@ func (d *Detector) parseWoLModes(modes string) []string {
 
 // EnableWoL enables Wake-on-LAN for the specified interface
 func (d *Detector) EnableWoL(iface string) error {
-	// Check if ethtool is available
+	return d.SetWoLMode(iface, "g")
+}
+
+// DisableWoL disables Wake-on-LAN for the specified interface
+func (d *Detector) DisableWoL(iface string) error {
+	return d.SetWoLMode(iface, "d")
+}
+
+// SetWoLMode sets the WoL mode (e.g., g, d) for an interface
+func (d *Detector) SetWoLMode(iface string, mode string) error {
 	if _, err := exec.LookPath("ethtool"); err != nil {
 		return fmt.Errorf("ethtool not found: %w", err)
 	}
 
-	d.logger.Info("wol.enable.attempt", "Attempting to enable WoL", map[string]interface{}{
+	d.logger.Info("wol.mode.set", "Applying WoL mode", map[string]interface{}{
 		"interface": iface,
+		"mode":      mode,
 	})
 
-	// Run ethtool to enable WoL with magic packet (mode "g")
-	cmd := exec.Command("ethtool", "-s", iface, "wol", "g")
+	cmd := exec.Command("ethtool", "-s", iface, "wol", mode)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		d.logger.Error("wol.enable.failed", "Failed to enable WoL", map[string]interface{}{
+		d.logger.Error("wol.mode.failed", "Failed to set WoL mode", map[string]interface{}{
 			"interface": iface,
+			"mode":      mode,
 			"error":     err.Error(),
 			"output":    string(output),
 		})
-		return fmt.Errorf("failed to enable WoL on %s: %w (output: %s)", iface, err, string(output))
+		return fmt.Errorf("failed to set WoL mode %s on %s: %w (output: %s)", mode, iface, err, string(output))
 	}
 
-	d.logger.Info("wol.enable.success", "WoL enabled successfully", map[string]interface{}{
+	d.logger.Info("wol.mode.applied", "WoL mode applied", map[string]interface{}{
 		"interface": iface,
+		"mode":      mode,
 	})
 
 	return nil
 }
 
-// DisableWoL disables Wake-on-LAN for the specified interface
-func (d *Detector) DisableWoL(iface string) error {
-	// Check if ethtool is available
-	if _, err := exec.LookPath("ethtool"); err != nil {
-		return fmt.Errorf("ethtool not found: %w", err)
+// ApplyConfig applies a persisted WoL configuration
+func (d *Detector) ApplyConfig(cfg WoLConfig) error {
+	if cfg.Interface == "" {
+		return fmt.Errorf("WoL config missing interface")
 	}
 
-	d.logger.Info("wol.disable.attempt", "Attempting to disable WoL", map[string]interface{}{
-		"interface": iface,
-	})
-
-	// Run ethtool to disable WoL (mode "d")
-	cmd := exec.Command("ethtool", "-s", iface, "wol", "d")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		d.logger.Error("wol.disable.failed", "Failed to disable WoL", map[string]interface{}{
-			"interface": iface,
-			"error":     err.Error(),
-			"output":    string(output),
-		})
-		return fmt.Errorf("failed to disable WoL on %s: %w (output: %s)", iface, err, string(output))
+	mode := cfg.WoLState
+	if mode == "" {
+		mode = "g"
 	}
 
-	d.logger.Info("wol.disable.success", "WoL disabled successfully", map[string]interface{}{
-		"interface": iface,
-	})
-
-	return nil
+	return d.SetWoLMode(cfg.Interface, mode)
 }
 
 // GetDefaultInterface attempts to find the default network interface

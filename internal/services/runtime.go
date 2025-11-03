@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -29,6 +30,8 @@ type Runtime interface {
 	GetContainerLogs(name string, tail int) (string, error)
 	// RemoveVolume removes a volume
 	RemoveVolume(name string) error
+	// TagImage retags an image reference (digest or ID) to a target reference
+	TagImage(source string, target string) error
 }
 
 // DockerRuntime implements Runtime for Docker
@@ -196,15 +199,210 @@ func (r *DockerRuntime) RemoveVolume(name string) error {
 	return nil
 }
 
-// DetectRuntime detects and returns the available container runtime
-func DetectRuntime() (Runtime, error) {
-	// Check for Docker first (default)
-	docker := NewDockerRuntime()
-	if docker.IsRunning() {
-		return docker, nil
+// TagImage retags a Docker image reference
+func (r *DockerRuntime) TagImage(source, target string) error {
+	// #nosec G204 — image references are validated before use.
+	cmd := exec.Command("docker", "tag", source, target)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to tag image %s as %s: %w, stderr: %s", source, target, err, stderr.String())
+	}
+	return nil
+}
+
+// PodmanRuntime implements Runtime for Podman (best-effort support)
+type PodmanRuntime struct{}
+
+// NewPodmanRuntime creates a new Podman runtime
+func NewPodmanRuntime() *PodmanRuntime {
+	return &PodmanRuntime{}
+}
+
+// IsRunning checks if Podman is available and responsive
+func (r *PodmanRuntime) IsRunning() bool {
+	cmd := exec.Command("podman", "info")
+	return cmd.Run() == nil
+}
+
+// ComposeUp starts services using podman compose
+func (r *PodmanRuntime) ComposeUp(composeFile string, services ...string) error {
+	args := []string{"compose", "-f", composeFile, "up", "-d"}
+	args = append(args, services...)
+
+	// #nosec G204 — compose arguments originate from curated templates and service names.
+	cmd := exec.Command("podman", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("podman compose up failed: %w, stderr: %s", err, stderr.String())
+	}
+	return nil
+}
+
+// ComposeDown stops and removes services using podman compose
+func (r *PodmanRuntime) ComposeDown(composeFile string) error {
+	// #nosec G204 — compose arguments originate from curated templates.
+	cmd := exec.Command("podman", "compose", "-f", composeFile, "down")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("podman compose down failed: %w, stderr: %s", err, stderr.String())
+	}
+	return nil
+}
+
+// CreateNetwork ensures a Podman network exists (idempotent)
+func (r *PodmanRuntime) CreateNetwork(name string) error {
+	checkCmd := exec.Command("podman", "network", "inspect", name)
+	if checkCmd.Run() == nil {
+		return nil
 	}
 
-	// TODO: Add Podman support in future (EP-003 states Podman is best-effort)
+	cmd := exec.Command("podman", "network", "create", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
-	return nil, fmt.Errorf("no container runtime detected (Docker required)")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create podman network %s: %w, stderr: %s", name, err, stderr.String())
+	}
+	return nil
+}
+
+// CreateVolume ensures a Podman volume exists (idempotent)
+func (r *PodmanRuntime) CreateVolume(name string) error {
+	checkCmd := exec.Command("podman", "volume", "inspect", name)
+	if checkCmd.Run() == nil {
+		return nil
+	}
+
+	cmd := exec.Command("podman", "volume", "create", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create podman volume %s: %w, stderr: %s", name, err, stderr.String())
+	}
+	return nil
+}
+
+// GetContainerStatus returns the container status for Podman
+func (r *PodmanRuntime) GetContainerStatus(name string) (string, error) {
+	cmd := exec.Command("podman", "inspect", "-f", "{{.State.Status}}", name)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get podman container status: %w, stderr: %s", err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// PullImage pulls an image using Podman
+func (r *PodmanRuntime) PullImage(image string) error {
+	cmd := exec.Command("podman", "pull", image)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to pull podman image %s: %w, stderr: %s", image, err, stderr.String())
+	}
+	return nil
+}
+
+// GetImageID returns the image ID for a Podman image reference
+func (r *PodmanRuntime) GetImageID(image string) (string, error) {
+	cmd := exec.Command("podman", "image", "inspect", "-f", "{{.Id}}", image)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to inspect podman image %s: %w, stderr: %s", image, err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// GetContainerLogs returns logs from a Podman container
+func (r *PodmanRuntime) GetContainerLogs(name string, tail int) (string, error) {
+	args := []string{"logs"}
+	if tail > 0 {
+		args = append(args, "--tail", fmt.Sprintf("%d", tail))
+	}
+	args = append(args, name)
+
+	cmd := exec.Command("podman", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get podman logs: %w, stderr: %s", err, stderr.String())
+	}
+
+	return stdout.String(), nil
+}
+
+// RemoveVolume removes a Podman volume
+func (r *PodmanRuntime) RemoveVolume(name string) error {
+	cmd := exec.Command("podman", "volume", "rm", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove podman volume %s: %w, stderr: %s", name, err, stderr.String())
+	}
+
+	return nil
+}
+
+// TagImage retags a Podman image reference
+func (r *PodmanRuntime) TagImage(source, target string) error {
+	cmd := exec.Command("podman", "tag", source, target)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to tag podman image %s as %s: %w, stderr: %s", source, target, err, stderr.String())
+	}
+
+	return nil
+}
+
+// DetectRuntime detects and returns the available container runtime
+func DetectRuntime() (Runtime, error) {
+	desired := strings.ToLower(strings.TrimSpace(os.Getenv("AISTACK_RUNTIME")))
+
+	docker := NewDockerRuntime()
+	podman := NewPodmanRuntime()
+
+	switch desired {
+	case "docker":
+		if docker.IsRunning() {
+			return docker, nil
+		}
+		return nil, fmt.Errorf("docker requested via AISTACK_RUNTIME but not available")
+	case "podman":
+		if podman.IsRunning() {
+			return podman, nil
+		}
+		return nil, fmt.Errorf("podman requested via AISTACK_RUNTIME but not available")
+	case "", "auto":
+		if docker.IsRunning() {
+			return docker, nil
+		}
+		if podman.IsRunning() {
+			return podman, nil
+		}
+	default:
+		return nil, fmt.Errorf("unknown container runtime '%s' (expected docker|podman|auto)", desired)
+	}
+
+	return nil, fmt.Errorf("no container runtime detected (Docker or Podman required)")
 }

@@ -11,6 +11,7 @@ type Manager struct {
 	logger     *logging.Logger
 	composeDir string
 	services   map[string]Service
+	imageLock  *VersionLock
 }
 
 // NewManager creates a new service manager
@@ -21,17 +22,23 @@ func NewManager(composeDir string, logger *logging.Logger) (*Manager, error) {
 		return nil, fmt.Errorf("failed to detect container runtime: %w", err)
 	}
 
+	lock, err := loadVersionLock()
+	if err != nil {
+		return nil, err
+	}
+
 	manager := &Manager{
 		runtime:    runtime,
 		logger:     logger,
 		composeDir: composeDir,
 		services:   make(map[string]Service),
+		imageLock:  lock,
 	}
 
 	// Register services
-	manager.services["ollama"] = NewOllamaService(composeDir, runtime, logger)
-	manager.services["openwebui"] = NewOpenWebUIService(composeDir, runtime, logger)
-	manager.services["localai"] = NewLocalAIService(composeDir, runtime, logger)
+	manager.services["ollama"] = NewOllamaService(composeDir, runtime, logger, lock)
+	manager.services["openwebui"] = NewOpenWebUIService(composeDir, runtime, logger, lock)
+	manager.services["localai"] = NewLocalAIService(composeDir, runtime, logger, lock)
 
 	return manager, nil
 }

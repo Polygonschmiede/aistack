@@ -553,3 +553,13 @@
   - ✓ Strukturiertes Logging für service.remove Events
   - ✓ Graceful Error-Handling und Validierung
   - Hinweis: Docker erforderlich für Container-Operations und Volume-Management
+
+## 2025-11-04 09:15 CET — EP-Audit Remediation
+- **Aufgabe:** Audit-Findings aus `docs/reports/epic-audit.md` bereinigen und Epics EP-001–EP-010 gegen `docs/features/epics.md` angleichen.
+- **Vorgehen:**
+  - `install.sh` um Podman-Erkennung, Binary-Installation, Udev-Regel und Default-Config `/etc/aistack/config.yaml` erweitert
+  - Runtime-Layer mit Podman-Support, `TagImage`/Rollback-Verfeinerung und `versions.lock`-Resolver ergänzt
+  - OpenWebUI/LocalAI/Ollama nutzen Pre-Start-Hooks für Image-Policy und Backend-Bindings; LocalAI hält `localai_models.json` aktuell
+  - CLI erhält WoL-Persistenz (`wol_config.json`, `wol-apply`), HTTP→WoL-Relay (`wol-relay`) sowie erweiterten TUI-Hauptscreen (GPU, Idle, Backend-Toggle)
+  - Audit-Report um Remediation-Sektion ergänzt; Tests laufen weiterhin nicht wegen defektem Go-Stdlib-Setup (`encoding/json` fehlt)
+- **Status:** Abgeschlossen — Audit-relevante Lücken geschlossen, Funktionen implementiert, Umgebungsfehler bei `go test` dokumentiert.

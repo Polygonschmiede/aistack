@@ -74,6 +74,11 @@ func (m *MockRuntime) RemoveVolume(name string) error {
 	return nil
 }
 
+func (m *MockRuntime) TagImage(source, target string) error {
+	m.imageID = source
+	return nil
+}
+
 func TestNetworkManager_EnsureNetwork(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)

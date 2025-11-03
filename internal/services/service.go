@@ -30,13 +30,14 @@ type ServiceStatus struct {
 
 // BaseService provides common service functionality
 type BaseService struct {
-	name        string
-	composeFile string
-	healthCheck HealthChecker
-	volumes     []string
-	runtime     Runtime
-	logger      *logging.Logger
-	netManager  *NetworkManager
+	name         string
+	composeFile  string
+	healthCheck  HealthChecker
+	volumes      []string
+	runtime      Runtime
+	logger       *logging.Logger
+	netManager   *NetworkManager
+	preStartHook func() error
 }
 
 // NewBaseService creates a new base service
@@ -87,6 +88,9 @@ func (s *BaseService) Install() error {
 
 // Start starts the service using docker compose
 func (s *BaseService) Start() error {
+	if err := s.executePreStartHook(); err != nil {
+		return err
+	}
 	return s.runComposeAction("start", func(composeFile string) error {
 		return s.runtime.ComposeUp(composeFile)
 	})
@@ -113,6 +117,27 @@ func (s *BaseService) runComposeAction(action string, execFn func(string) error)
 	}
 
 	s.logger.Info(baseEvent+"ed", fmt.Sprintf("%s service %s", s.name, pastTense(action)), serviceFields)
+	return nil
+}
+
+// SetPreStartHook registers a hook executed before ComposeUp during Start/Install
+func (s *BaseService) SetPreStartHook(hook func() error) {
+	s.preStartHook = hook
+}
+
+func (s *BaseService) executePreStartHook() error {
+	if s.preStartHook == nil {
+		return nil
+	}
+
+	if err := s.preStartHook(); err != nil {
+		s.logger.Error("service.start.prehook_failed", "Pre-start hook failed", map[string]interface{}{
+			"service": s.name,
+			"error":   err.Error(),
+		})
+		return fmt.Errorf("pre-start hook failed for %s: %w", s.name, err)
+	}
+
 	return nil
 }
 
