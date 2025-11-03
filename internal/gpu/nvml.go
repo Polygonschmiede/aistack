@@ -9,6 +9,9 @@ type DeviceInterface interface {
 	GetName() (string, nvml.Return)
 	GetUUID() (string, nvml.Return)
 	GetMemoryInfo() (nvml.Memory, nvml.Return)
+	GetUtilizationRates() (nvml.Utilization, nvml.Return)
+	GetPowerUsage() (uint32, nvml.Return)
+	GetTemperature(sensor nvml.TemperatureSensors) (uint32, nvml.Return)
 }
 
 // NVMLInterface defines the interface for NVML operations (for mocking)
@@ -36,6 +39,18 @@ func (w deviceWrapper) GetUUID() (string, nvml.Return) {
 
 func (w deviceWrapper) GetMemoryInfo() (nvml.Memory, nvml.Return) {
 	return w.device.GetMemoryInfo()
+}
+
+func (w deviceWrapper) GetUtilizationRates() (nvml.Utilization, nvml.Return) {
+	return w.device.GetUtilizationRates()
+}
+
+func (w deviceWrapper) GetPowerUsage() (uint32, nvml.Return) {
+	return w.device.GetPowerUsage()
+}
+
+func (w deviceWrapper) GetTemperature(sensor nvml.TemperatureSensors) (uint32, nvml.Return) {
+	return w.device.GetTemperature(sensor)
 }
 
 // RealNVML implements NVMLInterface using actual NVML library

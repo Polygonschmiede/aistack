@@ -1,11 +1,12 @@
-package gpu
+package metrics
 
 import (
+	"aistack/internal/gpu"
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 )
 
-// MockNVML is a mock implementation of NVMLInterface for testing
-type MockNVML struct {
+// mockNVML is a mock implementation of gpu.NVMLInterface for testing
+type mockNVML struct {
 	InitReturn                   nvml.Return
 	ShutdownReturn               nvml.Return
 	DeviceCount                  int
@@ -14,12 +15,12 @@ type MockNVML struct {
 	DriverVersionReturn          nvml.Return
 	CudaVersion                  int
 	CudaVersionReturn            nvml.Return
-	Devices                      []MockDevice
+	Devices                      []mockDevice
 	DeviceGetHandleByIndexReturn nvml.Return
 }
 
-// MockDevice represents a mock GPU device
-type MockDevice struct {
+// mockDevice represents a mock GPU device
+type mockDevice struct {
 	Name              string
 	NameReturn        nvml.Return
 	UUID              string
@@ -36,36 +37,36 @@ type MockDevice struct {
 	TemperatureReturn nvml.Return
 }
 
-// NewMockNVML creates a new mock NVML instance
-func NewMockNVML() *MockNVML {
-	return &MockNVML{
+// newMockNVML creates a new mock NVML instance
+func newMockNVML() *mockNVML {
+	return &mockNVML{
 		InitReturn:                   nvml.SUCCESS,
 		ShutdownReturn:               nvml.SUCCESS,
 		DeviceCountReturn:            nvml.SUCCESS,
 		DriverVersionReturn:          nvml.SUCCESS,
 		CudaVersionReturn:            nvml.SUCCESS,
 		DeviceGetHandleByIndexReturn: nvml.SUCCESS,
-		Devices:                      make([]MockDevice, 0),
+		Devices:                      make([]mockDevice, 0),
 	}
 }
 
 // Init mocks NVML initialization
-func (m *MockNVML) Init() nvml.Return {
+func (m *mockNVML) Init() nvml.Return {
 	return m.InitReturn
 }
 
 // Shutdown mocks NVML shutdown
-func (m *MockNVML) Shutdown() nvml.Return {
+func (m *mockNVML) Shutdown() nvml.Return {
 	return m.ShutdownReturn
 }
 
 // DeviceGetCount mocks getting device count
-func (m *MockNVML) DeviceGetCount() (int, nvml.Return) {
+func (m *mockNVML) DeviceGetCount() (int, nvml.Return) {
 	return m.DeviceCount, m.DeviceCountReturn
 }
 
 // DeviceGetHandleByIndex mocks getting device handle
-func (m *MockNVML) DeviceGetHandleByIndex(index int) (DeviceInterface, nvml.Return) {
+func (m *mockNVML) DeviceGetHandleByIndex(index int) (gpu.DeviceInterface, nvml.Return) {
 	if index < 0 || index >= len(m.Devices) {
 		return nil, nvml.ERROR_INVALID_ARGUMENT
 	}
@@ -73,18 +74,18 @@ func (m *MockNVML) DeviceGetHandleByIndex(index int) (DeviceInterface, nvml.Retu
 }
 
 // SystemGetDriverVersion mocks getting driver version
-func (m *MockNVML) SystemGetDriverVersion() (string, nvml.Return) {
+func (m *mockNVML) SystemGetDriverVersion() (string, nvml.Return) {
 	return m.DriverVersion, m.DriverVersionReturn
 }
 
 // SystemGetCudaDriverVersion mocks getting CUDA version
-func (m *MockNVML) SystemGetCudaDriverVersion() (int, nvml.Return) {
+func (m *mockNVML) SystemGetCudaDriverVersion() (int, nvml.Return) {
 	return m.CudaVersion, m.CudaVersionReturn
 }
 
-// mockDeviceImpl implements nvml.Device interface for testing
+// mockDeviceImpl implements gpu.DeviceInterface for testing
 type mockDeviceImpl struct {
-	device *MockDevice
+	device *mockDevice
 }
 
 // GetName returns the mock device name

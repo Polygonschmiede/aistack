@@ -68,6 +68,56 @@ The codebase is designed to grow into these modules (currently minimal):
 
 **Testing**: Table-driven tests, interfaces for mocking external dependencies
 
+**Metrics Collection**: JSONL-based metrics logging with CPU/GPU sampling
+
+### Metrics Architecture
+
+The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for power monitoring and idle detection:
+
+**CPU Metrics** (`cpu_collector.go`):
+- `/proc/stat` parsing for CPU utilization (delta-based calculation)
+- RAPL power measurement via `/sys/class/powercap/intel-rapl/`
+- CPU temperature from `/sys/class/thermal/thermal_zone0/temp`
+- Graceful degradation when RAPL unavailable (non-Intel, macOS)
+
+**GPU Metrics** (`gpu_collector.go`):
+- NVML-based metrics: GPU/Memory utilization, power usage, temperature
+- DeviceInterface abstraction for testability
+- Initialize/Collect/Shutdown lifecycle with thread-safety
+- Automatic fallback when GPU unavailable
+
+**Metrics Aggregation** (`collector.go`):
+- Combines CPU and GPU metrics into `MetricsSample`
+- Total power calculation: Baseline + CPU + GPU
+- Configurable sample interval (default: 10s)
+- Run loop with ticker and stop channel for continuous collection
+
+**Data Format** (`writer.go`):
+- JSONL (JSON Lines) format for append-only logging
+- One JSON object per line with timestamp
+- Optional fields (omitempty) for unavailable metrics
+- File locking for concurrent-safe writes
+
+**Sample Structure**:
+```json
+{
+  "ts": "2025-11-03T10:44:26Z",
+  "cpu_util": 45.2,
+  "cpu_w": 35.0,
+  "gpu_util": 75.0,
+  "gpu_mem": 3072,
+  "gpu_w": 200.0,
+  "temp_gpu": 72.0,
+  "est_total_w": 285.0
+}
+```
+
+**Testing Pattern**:
+- MockNVML for GPU metrics testing without hardware
+- Local mock implementations per package (avoids test file exports)
+- Table-driven tests for various hardware availability scenarios
+- Graceful degradation verified on macOS (no /proc/stat, RAPL, NVML)
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

@@ -11,6 +11,7 @@ import (
 	"aistack/internal/agent"
 	"aistack/internal/gpu"
 	"aistack/internal/logging"
+	"aistack/internal/metrics"
 	"aistack/internal/services"
 	"aistack/internal/tui"
 )
@@ -41,6 +42,9 @@ func main() {
 			return
 		case "gpu-check":
 			runGPUCheck()
+			return
+		case "metrics-test":
+			runMetricsTest()
 			return
 		case "version":
 			fmt.Printf("aistack version %s\n", version)
@@ -307,6 +311,77 @@ func runGPUCheck() {
 	}
 }
 
+// runMetricsTest performs a test metrics collection
+func runMetricsTest() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	fmt.Println("Testing metrics collection...")
+	fmt.Println()
+
+	// Create collector with default config
+	config := metrics.DefaultConfig()
+	collector := metrics.NewCollector(config, logger)
+
+	// Initialize
+	if err := collector.Initialize(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize metrics collector: %v\n", err)
+		os.Exit(1)
+	}
+	defer collector.Shutdown()
+
+	fmt.Println("=== Metrics Collection Test ===")
+	fmt.Println("Collecting 3 samples with 5-second interval...")
+	fmt.Println()
+
+	// Collect 3 samples
+	for i := 0; i < 3; i++ {
+		sample, err := collector.CollectSample()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to collect sample: %v\n", err)
+			continue
+		}
+
+		// Display sample
+		fmt.Printf("Sample %d (at %s):\n", i+1, sample.Timestamp.Format(time.RFC3339))
+		if sample.CPUUtil != nil {
+			fmt.Printf("  CPU Utilization: %.2f%%\n", *sample.CPUUtil)
+		}
+		if sample.CPUWatts != nil {
+			fmt.Printf("  CPU Power: %.2f W\n", *sample.CPUWatts)
+		}
+		if sample.GPUUtil != nil {
+			fmt.Printf("  GPU Utilization: %.2f%%\n", *sample.GPUUtil)
+		}
+		if sample.GPUMemMB != nil {
+			fmt.Printf("  GPU Memory: %d MB\n", *sample.GPUMemMB)
+		}
+		if sample.GPUWatts != nil {
+			fmt.Printf("  GPU Power: %.2f W\n", *sample.GPUWatts)
+		}
+		if sample.TempGPU != nil {
+			fmt.Printf("  GPU Temperature: %.1f°C\n", *sample.TempGPU)
+		}
+		if sample.EstTotalW != nil {
+			fmt.Printf("  Estimated Total Power: %.2f W\n", *sample.EstTotalW)
+		}
+		fmt.Println()
+
+		// Write to temp file
+		tmpFile := "/tmp/aistack_metrics_test.jsonl"
+		if err := collector.WriteSample(sample, tmpFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to write sample: %v\n", err)
+		}
+
+		// Wait before next sample (except for last one)
+		if i < 2 {
+			time.Sleep(5 * time.Second)
+		}
+	}
+
+	fmt.Println("✓ Metrics test completed")
+	fmt.Println("Sample data written to: /tmp/aistack_metrics_test.jsonl")
+}
+
 // printUsage displays usage information
 func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
@@ -321,6 +396,7 @@ Usage:
   aistack stop <service>           Stop a service
   aistack status                   Show status of all services
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
+  aistack metrics-test             Test metrics collection (CPU/GPU)
   aistack version                  Print version information
   aistack help                     Show this help message
 

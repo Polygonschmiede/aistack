@@ -48,15 +48,27 @@ make run           # Run directly with go run
 make coverage      # Generate coverage report
 ```
 
+### CLI Commands
+
+```bash
+./aistack                     # Start TUI (default)
+./aistack gpu-check           # Check GPU and NVIDIA stack
+./aistack metrics-test        # Test metrics collection (3 samples)
+./aistack version             # Show version
+./aistack help                # Show all commands
+```
+
 ## Project Status
 
 Currently implementing foundational epics:
 
 - ✅ **EP-001**: Repository & Tech Baseline (Go + TUI skeleton)
-- 🚧 **EP-002**: Bootstrap & System Integration
-- 🚧 **EP-003**: Container Runtime & Compose Assets
-- 📋 **EP-004**: NVIDIA Stack Detection
-- 📋 **EP-005**: Metrics & Sensors
+- ✅ **EP-002**: Bootstrap & System Integration (install.sh + systemd)
+- ✅ **EP-003**: Container Runtime & Compose Assets (Docker Compose)
+- ✅ **EP-004**: NVIDIA Stack Detection (NVML integration)
+- ✅ **EP-005**: Metrics & Sensors (CPU/GPU/Power monitoring)
+- 📋 **EP-006**: Idle Engine & Autosuspend
+- 📋 **EP-007**: Wake-on-LAN Setup
 
 See `docs/features/epics.md` for complete roadmap.
 
