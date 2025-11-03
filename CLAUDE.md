@@ -118,6 +118,81 @@ The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for 
 - Table-driven tests for various hardware availability scenarios
 - Graceful degradation verified on macOS (no /proc/stat, RAPL, NVML)
 
+### Idle Engine & Autosuspend Architecture
+
+The idle detection subsystem (`internal/idle/`) provides intelligent system suspend based on CPU/GPU activity:
+
+**Idle Configuration** (`types.go`):
+- `WindowSeconds`: Sliding window size for idle calculation (default: 60s)
+- `IdleTimeoutSeconds`: Idle duration before suspend (default: 300s = 5min)
+- `CPUThresholdPct`: CPU utilization threshold (default: 10%)
+- `GPUThresholdPct`: GPU utilization threshold (default: 5%)
+- `MinSamplesRequired`: Minimum samples before decision (default: 6)
+- `EnableSuspend`: Enable actual suspend execution (false for dry-run)
+
+**Sliding Window** (`window.go`):
+- Thread-safe metric sample collection with time-based pruning
+- IsIdle() calculation: System idle when CPU < threshold AND GPU < threshold
+- GetIdleDuration() tracks continuous idle time
+- Hysteresis: Resets idle duration immediately when activity detected
+- Prevents flapping with minimum sample requirements
+
+**Idle Engine** (`engine.go`):
+- Consumes CPU/GPU metrics from metrics collector
+- Calculates idle state with three statuses: `warming_up`, `active`, `idle`
+- Gating reasons prevent premature suspend:
+  - `warming_up`: Insufficient samples collected
+  - `below_timeout`: Idle but not long enough
+  - `high_cpu`: CPU above threshold
+  - `high_gpu`: GPU above threshold
+  - `inhibit`: systemd inhibitor active
+- ShouldSuspend() decision gate checks all conditions
+
+**State Persistence** (`state.go`):
+- JSON format saved to `/var/lib/aistack/idle_state.json`
+- Atomic writes (temp file + rename) for crash safety
+- Schema: `{status, idle_for_s, threshold_s, cpu_idle_pct, gpu_idle_pct, gating_reasons, last_update}`
+- Used by timer-triggered idle-check for suspend decisions
+
+**Suspend Executor** (`executor.go`):
+- Multi-stage gate checking:
+  1. Check gating reasons
+  2. Check systemd-inhibit for active locks
+  3. Execute `systemctl suspend`
+- Events logged: `power.suspend.requested`, `power.suspend.skipped`, `power.suspend.done`
+- Dry-run mode for safe testing without actual suspend
+- Inhibitor detection via `systemd-inhibit --list`
+
+**Agent Integration**:
+- Metrics collected every 10s
+- CPU/GPU utilization fed to idle engine
+- Idle state updated and persisted on each tick
+- Timer-triggered `aistack idle-check` evaluates suspend eligibility
+- Graceful shutdown preserves idle state across restarts
+
+**Workflow**:
+```
+Agent Tick (10s)
+  ↓
+Collect Metrics (CPU%, GPU%)
+  ↓
+Idle Engine: AddMetrics()
+  ↓
+Calculate State (warming_up/active/idle)
+  ↓
+Persist to idle_state.json
+  ↓
+(Timer triggers idle-check every 10s)
+  ↓
+Load idle_state.json
+  ↓
+ShouldSuspend() decision
+  ↓
+Check inhibitors
+  ↓
+systemctl suspend (if all gates pass)
+```
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

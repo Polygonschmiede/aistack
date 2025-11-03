@@ -52,6 +52,8 @@ make coverage      # Generate coverage report
 
 ```bash
 ./aistack                     # Start TUI (default)
+./aistack agent               # Run as background agent service
+./aistack idle-check          # Perform idle evaluation (timer-triggered)
 ./aistack gpu-check           # Check GPU and NVIDIA stack
 ./aistack metrics-test        # Test metrics collection (3 samples)
 ./aistack version             # Show version
@@ -67,8 +69,9 @@ Currently implementing foundational epics:
 - ✅ **EP-003**: Container Runtime & Compose Assets (Docker Compose)
 - ✅ **EP-004**: NVIDIA Stack Detection (NVML integration)
 - ✅ **EP-005**: Metrics & Sensors (CPU/GPU/Power monitoring)
-- 📋 **EP-006**: Idle Engine & Autosuspend
+- ✅ **EP-006**: Idle Engine & Autosuspend (Sliding window detection)
 - 📋 **EP-007**: Wake-on-LAN Setup
+- 📋 **EP-008-010**: Service Orchestration (Ollama, Open WebUI, LocalAI)
 
 See `docs/features/epics.md` for complete roadmap.
 

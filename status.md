@@ -261,3 +261,64 @@
   - ✓ CLI-Befehl `metrics-test` für manuelle Verifikation
   - ✓ Graceful Degradation auf Nicht-Linux/Nicht-NVIDIA-Systemen
   - Hinweis: Volle Funktionalität erfordert Linux mit NVIDIA GPU und Intel RAPL-Support
+
+## 2025-11-03 11:55 CET — EP-006 Implementation (Idle Engine & Autosuspend)
+- **Aufgabe:** EP-006 "Idle Engine & Autosuspend" vollständig implementieren, inklusive Sliding-Window-Detection, State-Persistierung und systemd-inhibit-Checks.
+- **Vorgehen:**
+  - Idle-Typen und Konfiguration erstellt (`internal/idle/types.go`):
+    - `IdleConfig` mit WindowSeconds, IdleTimeoutSeconds, CPU/GPU-Thresholds
+    - `IdleState` mit Status (warming_up, active, idle), GatingReasons, Timestamps
+    - `DefaultIdleConfig()` mit 60s Window, 300s Timeout, 10% CPU / 5% GPU Thresholds
+  - Sliding-Window implementiert (`window.go`, Story T-013):
+    - Thread-safe MetricSample-Sammlung mit time-based Pruning
+    - IsIdle() Berechnung: System idle wenn CPU < 10% UND GPU < 5%
+    - GetIdleDuration() mit kontinuierlicher Idle-Zeit-Tracking
+    - Hysterese durch Reset bei aktivität (idle duration → 0)
+  - Idle-Engine implementiert (`engine.go`):
+    - AddMetrics() für CPU/GPU-Utilization aus Metrics-Collector
+    - GetState() berechnet aktuellen Status mit Gating-Reasons
+    - ShouldSuspend() Decision-Gate basierend auf State
+    - Automatische Gating-Reasons: warming_up, high_cpu, high_gpu, below_timeout
+  - State-Manager implementiert (`state.go`):
+    - JSON-Persistierung nach `/var/lib/aistack/idle_state.json`
+    - Atomisches Schreiben (temp file + rename)
+    - Save/Load/Delete/Exists Operationen
+  - Suspend-Executor implementiert (`executor.go`, Story T-014):
+    - Execute() mit Gate-Check-Pipeline: GatingReasons → Inhibit → Suspend
+    - checkInhibitors() via `systemd-inhibit --list`
+    - executeSuspend() via `systemctl suspend`
+    - CheckCanSuspend() für Dry-Run-Validation
+    - Dry-Run-Mode (EnableSuspend=false) für Testing
+  - Agent-Integration (`internal/agent/agent.go`):
+    - Metrics-Collector + Idle-Engine in Agent eingebaut
+    - collectAndProcessMetrics() sammelt Metriken und aktualisiert Idle-State
+    - Idle-State-Persistierung bei jedem Tick (10s)
+    - IdleCheck() Funktion für Timer-getriggerte Suspend-Evaluation
+  - CLI-Erweiterung:
+    - `aistack idle-check`: Lädt gespeicherten State und entscheidet über Suspend
+    - Events: idle.check_started, idle.state_loaded, idle.suspend_check, idle.suspend_skipped, idle.check_completed
+  - Comprehensive Unit Tests:
+    - `types_test.go`: DefaultConfig, Status-Konstanten (2 Tests)
+    - `window_test.go`: AddSample, IsIdle, GetIdleDuration, Reset, Hysterese (11 Tests)
+    - `engine_test.go`: GetState (warming_up, idle, active), ShouldSuspend, Gating-Reasons (12 Tests)
+    - `state_test.go`: Save/Load, Exists, Delete, Atomic-Writes (5 Tests)
+    - `executor_test.go`: Execute mit verschiedenen States, Dry-Run, Inhibit-Check (6 Tests)
+    - Alle Tests nutzen table-driven Patterns und graceful degradation
+  - Testing & Validation:
+    - ✓ `go test ./internal/idle/... -v`: Alle 36 Idle-Tests erfolgreich (0.5s)
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `./dist/aistack idle-check`: Funktioniert mit State-Loading
+    - ✓ `./dist/aistack agent`: Agent sammelt Metriken und persistiert Idle-State
+    - ✓ Graceful Degradation auf macOS (keine /proc/stat, systemctl, /var/lib Permissions)
+- **Status:** Abgeschlossen — EP-006 implementiert. DoD erfüllt:
+  - ✓ Sliding Window für CPU/GPU-Idle-Detection mit konfigurierbarem Zeitfenster
+  - ✓ Idle-State-Berechnung mit Status (warming_up, active, idle)
+  - ✓ JSON-Persistierung nach `/var/lib/aistack/idle_state.json`
+  - ✓ Suspend-Executor mit systemd-inhibit Gate-Checks
+  - ✓ Gating-Reasons: warming_up, below_timeout, high_cpu, high_gpu, inhibit
+  - ✓ Agent-Integration: Metriken → Idle-Engine → State-Persistierung
+  - ✓ Timer-triggered `idle-check` Command für systemd.timer
+  - ✓ Unit-Tests für alle Komponenten mit >80% Coverage-Ziel
+  - ✓ Dry-Run-Mode für sichere Testing ohne echtes Suspend
+  - ✓ Events: power.suspend.requested, power.suspend.skipped, power.suspend.done
+  - Hinweis: Volle Funktionalität erfordert Ubuntu 24.04 mit systemd und NVIDIA GPU
