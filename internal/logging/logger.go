@@ -11,9 +11,13 @@ import (
 type Level string
 
 const (
+	// LevelDebug indicates fine-grained diagnostic logging.
 	LevelDebug Level = "debug"
-	LevelInfo  Level = "info"
-	LevelWarn  Level = "warn"
+	// LevelInfo indicates informational logging.
+	LevelInfo Level = "info"
+	// LevelWarn indicates non-fatal warnings.
+	LevelWarn Level = "warn"
+	// LevelError indicates error logging requiring attention.
 	LevelError Level = "error"
 )
 

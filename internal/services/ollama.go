@@ -30,7 +30,7 @@ func NewOllamaService(composeDir string, runtime Runtime, logger *logging.Logger
 	// Get state directory from env or use default
 	stateDir := os.Getenv("AISTACK_STATE_DIR")
 	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
+		stateDir = defaultStateDir
 	}
 
 	updater := NewServiceUpdater(base, runtime, OllamaImageName, healthCheck, logger, stateDir, lock)

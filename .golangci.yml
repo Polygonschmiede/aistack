@@ -2,27 +2,32 @@ run:
   timeout: 5m
   tests: true
   modules-download-mode: readonly
+  # zeigt nur neue Issues im Vergleich zu main (für lokale Läufe nützlich)
+  # new-from-rev: origin/main
 
 linters:
   enable:
     - gofmt
+    - goimports
     - govet
     - errcheck
     - staticcheck
     - unused
     - gosimple
-    - structcheck
-    - varcheck
     - ineffassign
-    - deadcode
     - typecheck
-    - goimports
     - misspell
     - unconvert
     - goconst
     - gocyclo
     - dupl
     - gosec
+    - revive         # moderner Stil-/Best-Practices-Linter
+    - errorlint      # Fehler-Wrapping/-Vergleiche prüfen
+    # optional:
+    # - gofumpt      # strengere Formatierung als gofmt
+    # - importas     # erzwungene Import-Aliase
+    # - prealloc     # Slices vorallozieren (Performance)
 
 linters-settings:
   gocyclo:
@@ -38,6 +43,10 @@ linters-settings:
   errcheck:
     check-type-assertions: true
     check-blank: true
+    # optional: bestimmte Funktionsaufrufe global ignorieren
+    # exclude-functions:
+    #   - io.Copy
+    #   - fmt.Fprint
 
   govet:
     check-shadowing: true
@@ -45,13 +54,36 @@ linters-settings:
   misspell:
     locale: US
 
+  revive:
+    # pragmatische Grundregeln; lässt sich später schärfen
+    rules:
+      - name: blank-imports
+      - name: context-keys-type
+      - name: exported
+      - name: error-return
+      - name: if-return
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: error-naming
+      - name: receiver-naming
+      - name: var-naming
+
+  gosec:
+    # häufige False-Positives abdämpfen (Beispiele):
+    excludes:
+      - G304  # untrusted file read via variable (häufig in CLI-Tools okay)
+      - G306  # file permissions (je nach Plattform unkritisch)
+      - G404  # crypto/rand vs. math/rand — in Nicht-Sicherheitskontexten ok
+    # Pfade filtern ist meist effektiver:
+    # exclude-generated: true
+
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
 
   exclude-rules:
-    # Exclude some linters from running on tests files
+    # Tests: weniger streng
     - path: _test\.go
       linters:
         - gocyclo
@@ -59,7 +91,7 @@ issues:
         - dupl
         - gosec
 
-    # Exclude known issues in generated code
+    # Generated Code komplett rausnehmen
     - path: ".*\\.pb\\.go"
       linters:
         - all

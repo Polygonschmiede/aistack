@@ -68,7 +68,7 @@ func (u *ServiceUpdater) Update() error {
 		NewImage:      ref.TagRef,
 		PullReference: ref.PullRef,
 		StartedAt:     time.Now(),
-		Status:        "pending",
+		Status:        planStatusPending,
 	}
 
 	// Get current image ID for rollback
@@ -83,7 +83,7 @@ func (u *ServiceUpdater) Update() error {
 	plan.OldImageID = oldImageID
 
 	// Save plan for potential rollback
-	if err := u.savePlan(plan); err != nil {
+	if err = u.savePlan(plan); err != nil {
 		return fmt.Errorf("failed to save update plan: %w", err)
 	}
 
@@ -93,18 +93,18 @@ func (u *ServiceUpdater) Update() error {
 		"image":   ref.PullRef,
 	})
 
-	if err := u.runtime.PullImage(ref.PullRef); err != nil {
-		plan.Status = "failed"
+	if err = u.runtime.PullImage(ref.PullRef); err != nil {
+		plan.Status = planStatusFailed
 		plan.CompletedAt = time.Now()
-		_ = u.savePlan(plan)
+		u.persistPlan(plan, "pull_image")
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
 
 	if ref.PullRef != ref.TagRef {
-		if err := u.runtime.TagImage(ref.PullRef, ref.TagRef); err != nil {
-			plan.Status = "failed"
+		if err = u.runtime.TagImage(ref.PullRef, ref.TagRef); err != nil {
+			plan.Status = planStatusFailed
 			plan.CompletedAt = time.Now()
-			_ = u.savePlan(plan)
+			u.persistPlan(plan, "tag_image")
 			return fmt.Errorf("failed to tag image %s as %s: %w", ref.PullRef, ref.TagRef, err)
 		}
 	}
@@ -112,9 +112,9 @@ func (u *ServiceUpdater) Update() error {
 	// Get new image ID
 	newImageID, err := u.runtime.GetImageID(ref.TagRef)
 	if err != nil {
-		plan.Status = "failed"
+		plan.Status = planStatusFailed
 		plan.CompletedAt = time.Now()
-		_ = u.savePlan(plan)
+		u.persistPlan(plan, "get_new_image_id")
 		return fmt.Errorf("failed to get new image ID: %w", err)
 	}
 	plan.NewImageID = newImageID
@@ -125,10 +125,10 @@ func (u *ServiceUpdater) Update() error {
 			"service":  u.service.Name(),
 			"image_id": newImageID,
 		})
-		plan.Status = "completed"
+		plan.Status = planStatusCompleted
 		plan.HealthAfterSwap = "unchanged"
 		plan.CompletedAt = time.Now()
-		_ = u.savePlan(plan)
+		u.persistPlan(plan, "image_unchanged")
 		return nil
 	}
 
@@ -137,17 +137,17 @@ func (u *ServiceUpdater) Update() error {
 		"service": u.service.Name(),
 	})
 
-	if err := u.service.Stop(); err != nil {
+	if err = u.service.Stop(); err != nil {
 		u.logger.Warn("service.update.stop_error", "Error stopping service", map[string]interface{}{
 			"service": u.service.Name(),
 			"error":   err.Error(),
 		})
 	}
 
-	if err := u.service.Start(); err != nil {
-		plan.Status = "failed"
+	if err = u.service.Start(); err != nil {
+		plan.Status = planStatusFailed
 		plan.CompletedAt = time.Now()
-		_ = u.savePlan(plan)
+		u.persistPlan(plan, "start_service")
 		return fmt.Errorf("failed to start service with new image: %w", err)
 	}
 
@@ -171,15 +171,15 @@ func (u *ServiceUpdater) Update() error {
 
 		// Attempt rollback
 		if rollbackErr := u.Rollback(plan); rollbackErr != nil {
-			plan.Status = "failed"
+			plan.Status = planStatusFailed
 			plan.CompletedAt = time.Now()
-			_ = u.savePlan(plan)
-			return fmt.Errorf("update failed and rollback also failed: health_err=%w, rollback_err=%v", err, rollbackErr)
+			u.persistPlan(plan, "rollback_failed")
+			return fmt.Errorf("update failed and rollback also failed: health_err=%w, rollback_err=%w", err, rollbackErr)
 		}
 
-		plan.Status = "rolled_back"
+		plan.Status = planStatusRolledBack
 		plan.CompletedAt = time.Now()
-		_ = u.savePlan(plan)
+		u.persistPlan(plan, "rollback_success")
 		return fmt.Errorf("update failed health check, rolled back to previous version")
 	}
 
@@ -190,11 +190,21 @@ func (u *ServiceUpdater) Update() error {
 		"health":       health,
 	})
 
-	plan.Status = "completed"
+	plan.Status = planStatusCompleted
 	plan.CompletedAt = time.Now()
-	_ = u.savePlan(plan)
+	u.persistPlan(plan, "completed")
 
 	return nil
+}
+
+func (u *ServiceUpdater) persistPlan(plan *UpdatePlan, context string) {
+	if err := u.savePlan(plan); err != nil {
+		u.logger.Warn("service.update.plan_save_failed", "Failed to persist update plan", map[string]interface{}{
+			"service": u.service.Name(),
+			"context": context,
+			"error":   err.Error(),
+		})
+	}
 }
 
 // Rollback rolls back to the previous image version
@@ -245,18 +255,19 @@ func (u *ServiceUpdater) Rollback(plan *UpdatePlan) error {
 // savePlan saves the update plan to disk
 func (u *ServiceUpdater) savePlan(plan *UpdatePlan) error {
 	// Ensure state directory exists
-	if err := os.MkdirAll(u.stateDir, 0755); err != nil {
+	stateDir := filepath.Clean(u.stateDir)
+	if err := os.MkdirAll(stateDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	planPath := filepath.Join(u.stateDir, fmt.Sprintf("%s_update_plan.json", u.service.Name()))
+	planPath := filepath.Join(stateDir, fmt.Sprintf("%s_update_plan.json", u.service.Name()))
 
 	data, err := json.MarshalIndent(plan, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal plan: %w", err)
 	}
 
-	if err := os.WriteFile(planPath, data, 0644); err != nil {
+	if err := os.WriteFile(planPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write plan: %w", err)
 	}
 
@@ -307,9 +318,9 @@ func (u *ServiceUpdater) EnforceImagePolicy() error {
 
 // LoadUpdatePlan loads the most recent update plan for a service
 func LoadUpdatePlan(serviceName, stateDir string) (*UpdatePlan, error) {
-	planPath := filepath.Join(stateDir, fmt.Sprintf("%s_update_plan.json", serviceName))
+	planPath := filepath.Join(filepath.Clean(stateDir), fmt.Sprintf("%s_update_plan.json", serviceName))
 
-	data, err := os.ReadFile(planPath)
+	data, err := os.ReadFile(planPath) // #nosec G304 -- path is derived from internal state directory
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil // No plan exists, this is OK

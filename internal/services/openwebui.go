@@ -31,7 +31,7 @@ func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Log
 	// Get state directory from env or use default
 	stateDir := os.Getenv("AISTACK_STATE_DIR")
 	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
+		stateDir = defaultStateDir
 	}
 
 	updater := NewServiceUpdater(base, runtime, OpenWebUIImageName, healthCheck, logger, stateDir, lock)

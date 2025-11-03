@@ -106,5 +106,10 @@ func (s *Server) writeError(w http.ResponseWriter, status int, message string) {
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		s.logger.Error("wol.relay.encode_failed", "Failed to encode response payload", map[string]interface{}{
+			"status": status,
+			"error":  err.Error(),
+		})
+	}
 }

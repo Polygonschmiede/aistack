@@ -6,6 +6,8 @@ import (
 
 // MetricsSample represents a single metrics sample
 // Data Contract from EP-005: metrics.sample.jsonl
+//
+//nolint:revive // exported name intentionally mirrors package (metrics.MetricsSample)
 type MetricsSample struct {
 	Timestamp time.Time `json:"ts"`
 	CPUUtil   *float64  `json:"cpu_util,omitempty"`    // CPU utilization percentage (0-100)
@@ -35,12 +37,14 @@ func (s CPUStats) Total() uint64 {
 	return s.User + s.Nice + s.System + s.Idle + s.IOWait + s.IRQ + s.SoftIRQ + s.Steal
 }
 
-// Idle returns total idle time
+// IdleTime returns total idle time
 func (s CPUStats) IdleTime() uint64 {
 	return s.Idle + s.IOWait
 }
 
 // MetricsConfig holds configuration for metrics collection
+//
+//nolint:revive // exported name intentionally mirrors package (metrics.MetricsConfig)
 type MetricsConfig struct {
 	SampleInterval time.Duration // How often to collect metrics
 	BaselinePowerW float64       // Baseline power consumption (system overhead)

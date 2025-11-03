@@ -55,7 +55,7 @@ func TestServiceUpdater_Update_NewImage(t *testing.T) {
 		t.Fatal("Plan is nil")
 	}
 
-	if plan.Status != "completed" {
+	if plan.Status != planStatusCompleted {
 		t.Errorf("Expected status 'completed', got '%s'", plan.Status)
 	}
 
@@ -108,7 +108,7 @@ func TestServiceUpdater_Update_HealthFails(t *testing.T) {
 	}
 
 	// After rollback with successful health check, status should be "rolled_back"
-	if plan.Status != "rolled_back" {
+	if plan.Status != planStatusRolledBack {
 		t.Errorf("Expected status 'rolled_back', got '%s'", plan.Status)
 	}
 }
@@ -153,7 +153,7 @@ func TestServiceUpdater_Update_NoChange(t *testing.T) {
 		t.Fatal("Plan is nil")
 	}
 
-	if plan.Status != "completed" {
+	if plan.Status != planStatusCompleted {
 		t.Errorf("Expected status 'completed', got '%s'", plan.Status)
 	}
 

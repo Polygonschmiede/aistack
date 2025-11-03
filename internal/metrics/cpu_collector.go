@@ -123,11 +123,11 @@ func (c *CPUCollector) readCPUStats() (*CPUStats, error) {
 	stats := &CPUStats{}
 
 	parse := func(value string) (uint64, error) {
-		parsed, err := strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid cpu stat value %q: %w", value, err)
+		parsedValue, parseErr := strconv.ParseUint(value, 10, 64)
+		if parseErr != nil {
+			return 0, fmt.Errorf("invalid cpu stat value %q: %w", value, parseErr)
 		}
-		return parsed, nil
+		return parsedValue, nil
 	}
 
 	if stats.User, err = parse(fields[1]); err != nil {

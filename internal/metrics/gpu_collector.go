@@ -5,6 +5,7 @@ import (
 
 	"aistack/internal/gpu"
 	"aistack/internal/logging"
+
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 )
 

@@ -62,7 +62,7 @@ func TestBackendBindingManager_SetBinding_Ollama(t *testing.T) {
 
 	// Verify file was created
 	bindingPath := filepath.Join(tmpDir, "ui_binding.json")
-	if _, err := os.Stat(bindingPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(bindingPath); os.IsNotExist(statErr) {
 		t.Error("Binding file was not created")
 	}
 
@@ -76,7 +76,7 @@ func TestBackendBindingManager_SetBinding_Ollama(t *testing.T) {
 		t.Errorf("Expected backend Ollama, got %s", binding.ActiveBackend)
 	}
 
-	if binding.URL != "http://aistack-ollama:11434" {
+	if binding.URL != backendOllamaURL {
 		t.Errorf("Expected Ollama URL, got %s", binding.URL)
 	}
 }
@@ -106,7 +106,7 @@ func TestBackendBindingManager_SetBinding_LocalAI(t *testing.T) {
 		t.Errorf("Expected backend LocalAI, got %s", binding.ActiveBackend)
 	}
 
-	if binding.URL != "http://aistack-localai:8080" {
+	if binding.URL != backendLocalAIURL {
 		t.Errorf("Expected LocalAI URL, got %s", binding.URL)
 	}
 }

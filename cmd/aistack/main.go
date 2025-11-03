@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,71 +24,50 @@ import (
 const version = "0.1.0-dev"
 
 func main() {
-	// Parse command line arguments
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "agent":
-			runAgent()
-			return
-		case "idle-check":
-			runIdleCheck()
-			return
-		case "install":
-			runInstall()
-			return
-		case "start":
-			runServiceCommand("start")
-			return
-		case "stop":
-			runServiceCommand("stop")
-			return
-		case "status":
-			runStatus()
-			return
-		case "update":
-			runServiceCommand("update")
-			return
-		case "logs":
-			runServiceCommand("logs")
-			return
-		case "remove":
-			runRemove()
-			return
-		case "backend":
-			runBackendSwitch()
-			return
-		case "gpu-check":
-			runGPUCheck()
-			return
-		case "metrics-test":
-			runMetricsTest()
-			return
-		case "wol-check":
-			runWoLCheck()
-			return
-		case "wol-setup":
-			runWoLSetup()
-			return
-		case "wol-send":
-			runWoLSend()
-			return
-		case "wol-apply":
-			runWoLApply()
-			return
-		case "wol-relay":
-			runWoLRelay()
-			return
-		case "version":
-			fmt.Printf("aistack version %s\n", version)
-			return
-		case "help", "--help", "-h":
-			printUsage()
-			return
-		}
+	if len(os.Args) <= 1 {
+		runTUI()
+		return
 	}
 
-	// Default: run TUI
-	runTUI()
+	command := strings.ToLower(os.Args[1])
+	if handler, ok := commandHandlers()[command]; ok {
+		handler()
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
+	printUsage()
+	os.Exit(1)
+}
+
+func commandHandlers() map[string]func() {
+	return map[string]func(){
+		"agent":        runAgent,
+		"idle-check":   runIdleCheck,
+		"install":      runInstall,
+		"start":        func() { runServiceCommand("start") },
+		"stop":         func() { runServiceCommand("stop") },
+		"status":       runStatus,
+		"update":       func() { runServiceCommand("update") },
+		"logs":         func() { runServiceCommand("logs") },
+		"remove":       runRemove,
+		"backend":      runBackendSwitch,
+		"gpu-check":    runGPUCheck,
+		"metrics-test": runMetricsTest,
+		"wol-check":    runWoLCheck,
+		"wol-setup":    runWoLSetup,
+		"wol-send":     runWoLSend,
+		"wol-apply":    runWoLApply,
+		"wol-relay":    runWoLRelay,
+		"version":      runVersion,
+		"help":         printUsage,
+		"--help":       printUsage,
+		"-h":           printUsage,
+	}
+}
+
+func runVersion() {
+	fmt.Printf("aistack version %s\n", version)
 }
 
 // runTUI starts the interactive TUI mode
@@ -705,7 +685,11 @@ func runWoLSend() {
 		os.Exit(1)
 	}
 
-	normalized, _ := wol.NormalizeMAC(targetMAC)
+	normalized, err := wol.NormalizeMAC(targetMAC)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to normalize MAC address: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("Sending Wake-on-LAN magic packet...\n")
 	fmt.Printf("  Target MAC: %s\n", normalized)

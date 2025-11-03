@@ -18,8 +18,8 @@ func ConfigPath() string {
 
 // SaveConfig persists the WoL configuration to disk
 func SaveConfig(cfg WoLConfig) error {
-	path := ConfigPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	path := filepath.Clean(ConfigPath())
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("failed to create WoL config directory: %w", err)
 	}
 
@@ -28,7 +28,7 @@ func SaveConfig(cfg WoLConfig) error {
 		return fmt.Errorf("failed to marshal WoL config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o640); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write WoL config: %w", err)
 	}
 
@@ -37,8 +37,8 @@ func SaveConfig(cfg WoLConfig) error {
 
 // LoadConfig loads the WoL configuration from disk
 func LoadConfig() (WoLConfig, error) {
-	path := ConfigPath()
-	data, err := os.ReadFile(path)
+	path := filepath.Clean(ConfigPath())
+	data, err := os.ReadFile(path) // #nosec G304 -- path is derived from ConfigDir and not user-controlled
 	if err != nil {
 		return WoLConfig{}, err
 	}

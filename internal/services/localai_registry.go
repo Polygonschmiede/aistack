@@ -33,11 +33,12 @@ func NewLocalAIModelsRegistry(stateDir string, logger *logging.Logger) *LocalAIM
 
 // Ensure ensures the registry file exists with a valid structure
 func (r *LocalAIModelsRegistry) Ensure() error {
-	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(r.path), 0o750); err != nil {
 		return fmt.Errorf("failed to create registry directory: %w", err)
 	}
 
-	if _, err := os.Stat(r.path); err == nil {
+	cleanPath := filepath.Clean(r.path)
+	if _, err := os.Stat(cleanPath); err == nil {
 		return nil
 	}
 
@@ -54,7 +55,7 @@ func (r *LocalAIModelsRegistry) Ensure() error {
 		return fmt.Errorf("failed to marshal registry: %w", err)
 	}
 
-	if err := os.WriteFile(r.path, data, 0o640); err != nil {
+	if err := os.WriteFile(cleanPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write registry: %w", err)
 	}
 
@@ -67,7 +68,7 @@ func (r *LocalAIModelsRegistry) Ensure() error {
 
 // Update replaces the registry contents with the provided model list
 func (r *LocalAIModelsRegistry) Update(models []LocalAIModel) error {
-	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(r.path), 0o750); err != nil {
 		return fmt.Errorf("failed to create registry directory: %w", err)
 	}
 
@@ -84,7 +85,7 @@ func (r *LocalAIModelsRegistry) Update(models []LocalAIModel) error {
 		return fmt.Errorf("failed to marshal registry: %w", err)
 	}
 
-	if err := os.WriteFile(r.path, data, 0o640); err != nil {
+	if err := os.WriteFile(filepath.Clean(r.path), data, 0o600); err != nil {
 		return fmt.Errorf("failed to write registry: %w", err)
 	}
 

@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"aistack/internal/gpu"
+
 	"github.com/NVIDIA/go-nvml/pkg/nvml"
 )
 

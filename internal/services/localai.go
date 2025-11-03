@@ -29,7 +29,7 @@ func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logge
 	// Get state directory from env or use default
 	stateDir := os.Getenv("AISTACK_STATE_DIR")
 	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
+		stateDir = defaultStateDir
 	}
 
 	updater := NewServiceUpdater(base, runtime, LocalAIImageName, healthCheck, logger, stateDir, lock)

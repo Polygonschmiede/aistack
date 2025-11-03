@@ -7,6 +7,8 @@ import (
 )
 
 // IdleConfig holds configuration for idle detection and suspend behavior
+//
+//nolint:revive // exported name intentionally mirrors package name for clarity (idle.IdleConfig)
 type IdleConfig struct {
 	// WindowSeconds is the size of the sliding window for idle calculation
 	WindowSeconds int `json:"window_seconds"`
@@ -56,6 +58,8 @@ func DefaultIdleConfig() IdleConfig {
 }
 
 // IdleState represents the current idle state of the system
+//
+//nolint:revive // exported name intentionally mirrors package name (idle.IdleState)
 type IdleState struct {
 	// Status is the current idle status (warming_up, active, idle)
 	Status string `json:"status"`

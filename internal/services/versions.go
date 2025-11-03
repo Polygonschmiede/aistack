@@ -52,14 +52,18 @@ func loadVersionLock() (*VersionLock, error) {
 		return nil, nil
 	}
 
-	file, err := os.Open(path)
+	file, err := os.Open(filepath.Clean(path)) // #nosec G304 -- path is derived from controlled configuration locations
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to open versions.lock: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close versions.lock: %v\n", cerr)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	entries := make(map[string]string)

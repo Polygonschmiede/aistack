@@ -13,8 +13,13 @@ import (
 type BackendType string
 
 const (
-	BackendOllama  BackendType = "ollama"
+	// BackendOllama represents the Ollama backend selection.
+	BackendOllama BackendType = "ollama"
+	// BackendLocalAI represents the LocalAI backend selection.
 	BackendLocalAI BackendType = "localai"
+
+	backendOllamaURL  = "http://aistack-ollama:11434"
+	backendLocalAIURL = "http://aistack-localai:8080"
 )
 
 // UIBinding represents the backend binding configuration for Open WebUI
@@ -28,7 +33,7 @@ type UIBinding struct {
 func DefaultUIBinding() *UIBinding {
 	return &UIBinding{
 		ActiveBackend: BackendOllama,
-		URL:           "http://aistack-ollama:11434",
+		URL:           backendOllamaURL,
 	}
 }
 
@@ -48,14 +53,14 @@ func NewBackendBindingManager(stateDir string, logger *logging.Logger) *BackendB
 
 // GetBinding returns the current backend binding
 func (m *BackendBindingManager) GetBinding() (*UIBinding, error) {
-	bindingPath := m.getBindingPath()
+	bindingPath := filepath.Clean(m.getBindingPath())
 
 	// If file doesn't exist, return default
 	if _, err := os.Stat(bindingPath); os.IsNotExist(err) {
 		return DefaultUIBinding(), nil
 	}
 
-	data, err := os.ReadFile(bindingPath)
+	data, err := os.ReadFile(bindingPath) // #nosec G304 -- path is internal to the state directory
 	if err != nil {
 		return nil, fmt.Errorf("failed to read binding: %w", err)
 	}
@@ -73,9 +78,9 @@ func (m *BackendBindingManager) SetBinding(backend BackendType) error {
 	var url string
 	switch backend {
 	case BackendOllama:
-		url = "http://aistack-ollama:11434"
+		url = backendOllamaURL
 	case BackendLocalAI:
-		url = "http://aistack-localai:8080"
+		url = backendLocalAIURL
 	default:
 		return fmt.Errorf("invalid backend type: %s", backend)
 	}
@@ -86,7 +91,8 @@ func (m *BackendBindingManager) SetBinding(backend BackendType) error {
 	}
 
 	// Ensure state directory exists
-	if err := os.MkdirAll(m.stateDir, 0755); err != nil {
+	stateDir := filepath.Clean(m.stateDir)
+	if err := os.MkdirAll(stateDir, 0o750); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
@@ -97,8 +103,8 @@ func (m *BackendBindingManager) SetBinding(backend BackendType) error {
 	}
 
 	// Write to file
-	bindingPath := m.getBindingPath()
-	if err := os.WriteFile(bindingPath, data, 0644); err != nil {
+	bindingPath := filepath.Join(stateDir, backendStateFilename)
+	if err := os.WriteFile(bindingPath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write binding: %w", err)
 	}
 
@@ -143,16 +149,16 @@ func (m *BackendBindingManager) SwitchBackend(newBackend BackendType) (BackendTy
 
 // getBindingPath returns the path to the binding state file
 func (m *BackendBindingManager) getBindingPath() string {
-	return filepath.Join(m.stateDir, "ui_binding.json")
+	return filepath.Join(m.stateDir, backendStateFilename)
 }
 
 // GetBackendURL returns the URL for a given backend type
 func GetBackendURL(backend BackendType) (string, error) {
 	switch backend {
 	case BackendOllama:
-		return "http://aistack-ollama:11434", nil
+		return backendOllamaURL, nil
 	case BackendLocalAI:
-		return "http://aistack-localai:8080", nil
+		return backendLocalAIURL, nil
 	default:
 		return "", fmt.Errorf("invalid backend type: %s", backend)
 	}

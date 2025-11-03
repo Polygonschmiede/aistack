@@ -571,5 +571,6 @@
   - Staticcheck-SA5011 durch frühes `t.Fatal` in WoL-Tests entschärft und Health-Check-Defer angepasst.
   - `golangci-lint` via `GOTOOLCHAIN=go1.22.6 go install ...` installiert und Cache-Pfade auf Workspace umgestellt.
   - Health-Tests mit `startTestServer` gegen Sandbox-Netzwerksperren gehärtet; `go test ./...` läuft mit lokalem `.gocache` grün.
+  - Errcheck-/gosec-/goconst-/gocyclo-Funde bereinigt (Plan-Persistierung, sichere Pfade, deduplizierte Runtime-Logs, Command-Dispatch refaktoriert).
   - `gofmt` über alle geänderten Dateien ausgeführt.
-- **Status:** Abgeschlossen — Quellcode und Tooling in Ordnung; `golangci-lint run` nutzbar (meldet bestehende gosec/dupl-Funde aus Config), `go test ./...` erfolgreich durchgelaufen.
+- **Status:** Abgeschlossen — Quellcode und Tooling in Ordnung; `golangci-lint run` sowie `go test ./...` laufen ohne Findings.

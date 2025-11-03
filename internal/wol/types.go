@@ -8,6 +8,8 @@ import (
 )
 
 // WoLConfig holds Wake-on-LAN configuration
+//
+//nolint:revive // exported name intentionally mirrors package (wol.WoLConfig)
 type WoLConfig struct {
 	// Interface is the network interface name (e.g., "eth0", "eno1")
 	Interface string `json:"interface"`
@@ -23,6 +25,8 @@ type WoLConfig struct {
 }
 
 // WoLStatus represents the Wake-on-LAN status of a system
+//
+//nolint:revive // exported name intentionally mirrors package (wol.WoLStatus)
 type WoLStatus struct {
 	// Supported indicates if WoL is supported by the hardware/driver
 	Supported bool `json:"supported"`

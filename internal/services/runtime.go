@@ -34,6 +34,26 @@ type Runtime interface {
 	TagImage(source string, target string) error
 }
 
+func fetchContainerLogs(binary, label, name string, tail int) (string, error) {
+	args := []string{"logs"}
+	if tail > 0 {
+		args = append(args, "--tail", fmt.Sprintf("%d", tail))
+	}
+	args = append(args, name)
+
+	// #nosec G204 — container identifiers are validated before invocation
+	cmd := exec.Command(binary, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get %s logs: %w, stderr: %s", label, err, stderr.String())
+	}
+
+	return stdout.String(), nil
+}
+
 // DockerRuntime implements Runtime for Docker
 type DockerRuntime struct{}
 
@@ -166,23 +186,7 @@ func (r *DockerRuntime) GetImageID(image string) (string, error) {
 
 // GetContainerLogs returns logs from a container
 func (r *DockerRuntime) GetContainerLogs(name string, tail int) (string, error) {
-	args := []string{"logs"}
-	if tail > 0 {
-		args = append(args, "--tail", fmt.Sprintf("%d", tail))
-	}
-	args = append(args, name)
-
-	// #nosec G204 — container name is validated before use
-	cmd := exec.Command("docker", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to get container logs: %w, stderr: %s", err, stderr.String())
-	}
-
-	return stdout.String(), nil
+	return fetchContainerLogs("docker", "container", name, tail)
 }
 
 // RemoveVolume removes a volume
@@ -331,22 +335,7 @@ func (r *PodmanRuntime) GetImageID(image string) (string, error) {
 
 // GetContainerLogs returns logs from a Podman container
 func (r *PodmanRuntime) GetContainerLogs(name string, tail int) (string, error) {
-	args := []string{"logs"}
-	if tail > 0 {
-		args = append(args, "--tail", fmt.Sprintf("%d", tail))
-	}
-	args = append(args, name)
-
-	cmd := exec.Command("podman", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to get podman logs: %w, stderr: %s", err, stderr.String())
-	}
-
-	return stdout.String(), nil
+	return fetchContainerLogs("podman", "podman", name, tail)
 }
 
 // RemoveVolume removes a Podman volume

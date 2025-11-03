@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -10,9 +11,12 @@ import (
 type HealthStatus string
 
 const (
-	HealthGreen  HealthStatus = "green"
+	// HealthGreen indicates the service responded with expected status.
+	HealthGreen HealthStatus = "green"
+	// HealthYellow indicates an unexpected status while service remains reachable.
 	HealthYellow HealthStatus = "yellow"
-	HealthRed    HealthStatus = "red"
+	// HealthRed indicates the health check failed.
+	HealthRed HealthStatus = "red"
 )
 
 // HealthChecker is an interface for performing health checks
@@ -47,7 +51,9 @@ func (hc HealthCheck) Check() (HealthStatus, error) {
 		return HealthRed, fmt.Errorf("health check failed: %w", err)
 	}
 	defer func() {
-		_ = resp.Body.Close()
+		if cerr := resp.Body.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to close health check response body: %v\n", cerr)
+		}
 	}()
 
 	if resp.StatusCode != hc.ExpectedStatus {

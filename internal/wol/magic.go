@@ -81,7 +81,14 @@ func (s *Sender) sendUDP(addr string, packet []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create UDP connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			s.logger.Warn("wol.send.close_failed", "Failed to close UDP connection", map[string]interface{}{
+				"address": addr,
+				"error":   closeErr.Error(),
+			})
+		}
+	}()
 
 	// Send packet
 	n, err := conn.Write(packet)
