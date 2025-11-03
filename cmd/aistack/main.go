@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aistack/internal/agent"
+	"aistack/internal/gpu"
 	"aistack/internal/logging"
 	"aistack/internal/services"
 	"aistack/internal/tui"
@@ -37,6 +38,9 @@ func main() {
 			return
 		case "status":
 			runStatus()
+			return
+		case "gpu-check":
+			runGPUCheck()
 			return
 		case "version":
 			fmt.Printf("aistack version %s\n", version)
@@ -234,6 +238,75 @@ func runStatus() {
 	}
 }
 
+// runGPUCheck performs GPU detection and displays results
+func runGPUCheck() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	fmt.Println("Checking GPU and NVIDIA Stack...")
+	fmt.Println()
+
+	// Detect GPUs via NVML
+	detector := gpu.NewDetector(logger)
+	gpuReport := detector.DetectGPUs()
+
+	// Display GPU report
+	fmt.Println("=== GPU Detection Report ===")
+	if !gpuReport.NVMLOk {
+		fmt.Printf("❌ NVML Status: FAILED\n")
+		fmt.Printf("   Error: %s\n", gpuReport.ErrorMessage)
+		fmt.Println()
+		fmt.Println("💡 Hint: Install NVIDIA drivers to enable GPU support")
+		fmt.Println("   https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/")
+	} else {
+		fmt.Printf("✓ NVML Status: OK\n")
+		fmt.Printf("  Driver Version: %s\n", gpuReport.DriverVersion)
+		fmt.Printf("  CUDA Version: %d\n", gpuReport.CUDAVersion)
+		fmt.Printf("  GPU Count: %d\n", len(gpuReport.GPUs))
+		fmt.Println()
+
+		for _, gpu := range gpuReport.GPUs {
+			fmt.Printf("  GPU %d:\n", gpu.Index)
+			fmt.Printf("    Name: %s\n", gpu.Name)
+			fmt.Printf("    UUID: %s\n", gpu.UUID)
+			fmt.Printf("    Memory: %d MB\n", gpu.MemoryMB)
+		}
+	}
+
+	fmt.Println()
+
+	// Detect Container Toolkit
+	toolkitDetector := gpu.NewToolkitDetector(logger)
+	toolkitReport := toolkitDetector.DetectContainerToolkit()
+
+	fmt.Println("=== NVIDIA Container Toolkit ===")
+	if !toolkitReport.DockerSupport {
+		fmt.Printf("❌ Docker GPU Support: NOT AVAILABLE\n")
+		if toolkitReport.ErrorMessage != "" {
+			fmt.Printf("   Error: %s\n", toolkitReport.ErrorMessage)
+		}
+		fmt.Println()
+		fmt.Println("💡 Hint: Install NVIDIA Container Toolkit to enable GPU in containers")
+		fmt.Println("   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html")
+	} else {
+		fmt.Printf("✓ Docker GPU Support: AVAILABLE\n")
+		if toolkitReport.ToolkitVersion != "" {
+			fmt.Printf("  Toolkit Version: %s\n", toolkitReport.ToolkitVersion)
+		}
+	}
+
+	fmt.Println()
+
+	// Save detailed report if requested
+	if len(os.Args) > 2 && os.Args[2] == "--save" {
+		reportPath := "/tmp/gpu_report.json"
+		if err := detector.SaveReport(gpuReport, reportPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to save report: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Detailed report saved to: %s\n", reportPath)
+	}
+}
+
 // printUsage displays usage information
 func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
@@ -247,6 +320,7 @@ Usage:
   aistack start <service>          Start a service
   aistack stop <service>           Stop a service
   aistack status                   Show status of all services
+  aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack version                  Print version information
   aistack help                     Show this help message
 

@@ -156,3 +156,51 @@
   - ✓ Unit-Tests mit >80% Coverage-Ziel, MockRuntime für isolation
   - ✓ Profil-Installation (standard-gpu: alle 3 Services, minimal: nur Ollama)
   - Hinweis: Docker-Daemon erforderlich für `aistack install` und `docker compose` Operationen
+
+## 2025-11-03 11:35 CET — EP-004 Implementation (NVIDIA Stack Detection & Enablement)
+- **Aufgabe:** EP-004 "NVIDIA Stack Detection & Enablement" vollständig implementieren, inklusive GPU-Erkennung via NVML und Container Toolkit Detection.
+- **Vorgehen:**
+  - NVML-Dependencies hinzugefügt (`github.com/NVIDIA/go-nvml v0.13.0-1`)
+  - GPU-Detection-Modul implementiert (`internal/gpu/`):
+    - `types.go`: Datenstrukturen für GPUInfo, GPUReport und ContainerToolkitReport (EP-004 Data Contracts)
+    - `nvml.go`: NVML-Interface-Abstraktion mit DeviceInterface für testbare GPU-Operationen
+    - `detector.go`: GPU-Detector mit NVML-Init, Device-Enumeration und Report-Generation (Story T-009)
+    - `toolkit.go`: ToolkitDetector für NVIDIA Container Toolkit Detection mit Docker --gpus Test (Story T-010)
+  - GPU-Detection-Features (Story T-009):
+    - NVML-Initialisierung mit graceful failure handling
+    - Driver-Version und CUDA-Version Erkennung
+    - Multi-GPU-Support mit UUID, Name und Memory-Info
+    - JSON-Report-Export (`gpu_report.json`)
+    - Strukturiertes Logging für alle GPU-Events
+  - Container Toolkit Detection (Story T-010):
+    - Docker GPU Support Test mit `--gpus all` Flag
+    - Toolkit-Version-Erkennung via nvidia-container-toolkit CLI
+    - QuickGPUCheck für nvidia-smi Verfügbarkeit
+    - Detaillierte Error-Messages bei Failures
+  - CLI-Erweiterung (`cmd/aistack/main.go`):
+    - `aistack gpu-check`: Vollständiger GPU- und Toolkit-Status mit hilfreichen Hinweisen
+    - `aistack gpu-check --save`: Report-Export nach /tmp/gpu_report.json
+    - Benutzerfreundliche Ausgabe mit ✓/❌ Symbolen und Dokumentations-Links
+  - Comprehensive Unit Tests:
+    - `nvml_mock_test.go`: MockNVML mit DeviceInterface für isolierte Tests
+    - `detector_test.go`: 5 Tests für GPU-Detection (Success, InitFailed, NoDevices, DeviceCountFailed, SaveReport)
+    - `toolkit_test.go`: 4 Tests für Toolkit-Detection und Struktur-Validierung
+    - MockDevice mit konfigurierbaren Return-Codes für alle NVML-Operationen
+    - Table-driven Test-Patterns für verschiedene Failure-Szenarien
+  - Testing & Validation:
+    - ✓ `go mod tidy`: Dependencies aufgeräumt
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/gpu/... -v`: Alle 10 GPU-Tests erfolgreich (0.5s)
+    - ✓ `go test ./... -cover`: 55.3% Coverage für GPU-Modul
+    - ✓ `./dist/aistack gpu-check`: CLI funktioniert mit hilfreichen Fehlermeldungen
+    - ✓ Graceful Degradation auf Systemen ohne GPU/Docker (Mac-Test erfolgreich)
+- **Status:** Abgeschlossen — EP-004 implementiert. DoD erfüllt:
+  - ✓ NVML-Calls funktionieren (mit Mocks getestet, Real-NVML-Integration vorbereitet)
+  - ✓ GPU-Report mit driver_version, cuda_version, nvml_ok und gpus-Array
+  - ✓ Container Toolkit Detection mit --gpus Dry-Run-Test
+  - ✓ Klare Hinweise/Links bei GPU/Toolkit-Problemen in TUI/CLI
+  - ✓ MockNVML für isolierte Unit-Tests ohne Hardware-Dependency
+  - ✓ Strukturiertes Logging für alle GPU-Events (gpu.detect.*, gpu.nvml.*, gpu.toolkit.*)
+  - ✓ JSON-Report-Export für Support/Diagnostik
+  - ✓ Graceful Failure-Handling (ERROR_LIBRARY_NOT_FOUND → hilfreiche Hinweise)
+  - Hinweis: NVIDIA-Treiber erforderlich für echte GPU-Erkennung (Tests funktionieren mit Mocks)
