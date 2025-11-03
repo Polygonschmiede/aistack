@@ -457,3 +457,59 @@
   - ✓ Graceful Degradation und Error-Handling
   - ✓ Alle Services (Ollama, OpenWebUI, LocalAI) mit Update-Funktionalität
   - Hinweis: Docker erforderlich für Image-Pull und Container-Operations
+
+## 2025-11-03 18:00 CET — EP-009 Implementation (Service: Open WebUI Orchestration)
+- **Aufgabe:** EP-009 "Service: Open WebUI Orchestration" vollständig implementieren, inklusive Backend-Switch zwischen Ollama und LocalAI.
+- **Vorgehen:**
+  - Backend-Binding State Management implementiert (`internal/services/backend_binding.go`, Story T-019):
+    - `BackendType`: Enum-like Type für Backend-Selection (ollama, localai)
+    - `UIBinding`: JSON-Struktur für Backend-Konfiguration (active_backend, url)
+    - `BackendBindingManager`: State-Manager mit JSON-Persistierung
+    - `GetBinding()`: Lädt gespeicherten State oder liefert Ollama-Default
+    - `SetBinding()`: Persistiert Backend-Wahl nach `/var/lib/aistack/ui_binding.json`
+    - `SwitchBackend()`: Backend-Wechsel mit Rückgabe des alten Backend-Types
+    - `GetBackendURL()`: URL-Resolution für Backend-Types
+    - Default-Backend: Ollama (http://aistack-ollama:11434)
+  - OpenWebUI Service erweitert (`internal/services/openwebui.go`, Story T-019):
+    - `SwitchBackend(backend BackendType)`: Backend-Switch mit Service-Restart
+    - `GetCurrentBackend()`: Aktuell konfiguriertes Backend abfragen
+    - Backend-Switch-Workflow: State ändern → Environment Variable setzen → Service neu starten
+    - Idempotenz: Skip Restart wenn Backend unverändert
+    - Strukturiertes Logging: openwebui.backend.{switch.start|switch.restart|switch.success|switch.no_change}
+  - Compose-Template aktualisiert (`compose/openwebui.yaml`):
+    - `OLLAMA_BASE_URL` Environment-Variable konfigurierbar via `${OLLAMA_BASE_URL:-http://aistack-ollama:11434}`
+    - Docker Compose übernimmt URL aus Environment beim Service-Start
+  - CLI-Integration (`cmd/aistack/main.go`):
+    - `aistack backend <ollama|localai>`: Backend-Switch mit automatischem Service-Restart
+    - Benutzerfreundliche Ausgabe: Aktuelles Backend, Switch-Fortschritt, Success-Meldung
+    - Validierung: Nur ollama/localai erlaubt, klare Fehlermeldungen bei invaliden Inputs
+    - Help-Text erweitert mit Backend-Befehl
+  - Comprehensive Unit Tests (`internal/services/backend_binding_test.go`):
+    - `TestDefaultUIBinding`: Verifiziert Ollama als Default-Backend
+    - `TestBackendBindingManager_GetBinding_NotExists`: Default-Return bei fehlendem State-File
+    - `TestBackendBindingManager_SetBinding_Ollama`: Ollama-Backend-Persistierung
+    - `TestBackendBindingManager_SetBinding_LocalAI`: LocalAI-Backend-Persistierung
+    - `TestBackendBindingManager_SetBinding_Invalid`: Error-Handling für ungültige Backends
+    - `TestBackendBindingManager_SwitchBackend`: Backend-Wechsel zwischen Ollama und LocalAI
+    - `TestBackendBindingManager_SwitchBackend_NoChange`: Idempotenz-Test (kein Change)
+    - `TestGetBackendURL`: URL-Resolution für alle Backend-Types
+    - Alle Tests nutzen tmpDir für State-File-Isolation
+  - Testing & Validation:
+    - ✓ `go test ./internal/services/... -v -run TestBackend`: Alle 8 Backend-Tests erfolgreich
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/services/... -v`: Alle 32 Service-Tests erfolgreich (17.39s)
+    - ✓ `./dist/aistack help`: Backend-Befehl dokumentiert
+    - ✓ State-Persistierung validiert (JSON-Format, atomisches Schreiben)
+- **Status:** Abgeschlossen — EP-009 implementiert. DoD erfüllt:
+  - ✓ Story T-019: Backend-Switch (Ollama ↔ LocalAI)
+  - ✓ CLI-Befehl: backend <ollama|localai>
+  - ✓ Backend-Binding State-Persistierung nach `/var/lib/aistack/ui_binding.json`
+  - ✓ Service-Restart bei Backend-Wechsel (Stop → Environment Update → Start)
+  - ✓ Idempotenz: Kein Restart wenn Backend bereits gesetzt
+  - ✓ Environment Variable `OLLAMA_BASE_URL` für Docker Compose Integration
+  - ✓ Backend-URLs: Ollama (http://aistack-ollama:11434), LocalAI (http://aistack-localai:8080)
+  - ✓ Strukturiertes Logging für alle Backend-Switch-Events
+  - ✓ Unit-Tests mit >80% Coverage-Ziel (8 Tests, 100% Pass-Rate)
+  - ✓ Graceful Error-Handling und Validierung
+  - ✓ Clean Architecture: Backend-State (BackendBindingManager) getrennt von Service-Operations (OpenWebUIService)
+  - Hinweis: Docker erforderlich für Service-Restart und Compose-Environment-Handling

@@ -59,6 +59,7 @@ make coverage      # Generate coverage report
 ./aistack start <service>          # Start a service
 ./aistack stop <service>           # Stop a service
 ./aistack update <service>         # Update service to latest (with rollback)
+./aistack backend <ollama|localai> # Switch Open WebUI backend (restarts service)
 ./aistack logs <service> [lines]   # Show service logs (default: 100 lines)
 ./aistack status                   # Show status of all services
 ./aistack gpu-check                # Check GPU and NVIDIA stack
@@ -82,7 +83,8 @@ Currently implementing foundational epics:
 - ✅ **EP-006**: Idle Engine & Autosuspend (Sliding window detection)
 - ✅ **EP-007**: Wake-on-LAN Setup (WoL detection, magic packet sender)
 - ✅ **EP-008**: Ollama Orchestration (Lifecycle + Update/Rollback)
-- 📋 **EP-009-010**: Service Orchestration (Open WebUI, LocalAI)
+- ✅ **EP-009**: Open WebUI Orchestration (Backend-Switch: Ollama ↔ LocalAI)
+- 📋 **EP-010**: LocalAI Orchestration
 
 See `docs/features/epics.md` for complete roadmap.
 

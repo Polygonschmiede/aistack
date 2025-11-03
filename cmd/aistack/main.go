@@ -47,6 +47,9 @@ func main() {
 		case "logs":
 			runServiceCommand("logs")
 			return
+		case "backend":
+			runBackendSwitch()
+			return
 		case "gpu-check":
 			runGPUCheck()
 			return
@@ -602,6 +605,85 @@ func runWoLSend() {
 	fmt.Println("  4. The network switch supports broadcast packets")
 }
 
+// runBackendSwitch handles backend switching for Open WebUI
+// Story T-019: Backend-Switch (Ollama ↔ LocalAI)
+func runBackendSwitch() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+
+	// Parse command line arguments
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: aistack backend <ollama|localai>")
+		fmt.Println()
+		fmt.Println("Switches the Open WebUI backend between Ollama and LocalAI.")
+		fmt.Println("The service will be restarted to apply the change.")
+		os.Exit(1)
+	}
+
+	backendArg := os.Args[2]
+	var backend services.BackendType
+
+	switch backendArg {
+	case "ollama":
+		backend = services.BackendOllama
+	case "localai":
+		backend = services.BackendLocalAI
+	default:
+		fmt.Fprintf(os.Stderr, "❌ Invalid backend: %s\n", backendArg)
+		fmt.Println("Valid backends: ollama, localai")
+		os.Exit(1)
+	}
+
+	// Create manager and get OpenWebUI service
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	service, err := manager.GetService("openwebui")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting Open WebUI service: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Cast to OpenWebUIService
+	openwebuiService, ok := service.(*services.OpenWebUIService)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "Error: service is not an OpenWebUIService\n")
+		os.Exit(1)
+	}
+
+	// Get current backend
+	currentBackend, err := openwebuiService.GetCurrentBackend()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting current backend: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Current backend: %s\n", currentBackend)
+
+	if currentBackend == backend {
+		fmt.Printf("✓ Backend already set to %s (no change needed)\n", backend)
+		return
+	}
+
+	fmt.Printf("Switching backend from %s to %s...\n", currentBackend, backend)
+	fmt.Println("This will restart the Open WebUI service.")
+	fmt.Println()
+
+	// Switch backend
+	if err := openwebuiService.SwitchBackend(backend); err != nil {
+		fmt.Fprintf(os.Stderr, "\n❌ Backend switch failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n✓ Backend switched to %s successfully\n", backend)
+	fmt.Println()
+	fmt.Println("Open WebUI is now connected to the new backend.")
+	fmt.Println("Access it at: http://localhost:3000")
+}
+
 // printUsage displays usage information
 func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
@@ -616,6 +698,7 @@ Usage:
   aistack stop <service>           Stop a service
   aistack update <service>         Update a service to latest version (with rollback)
   aistack logs <service> [lines]   Show service logs (default: 100 lines)
+  aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
   aistack status                   Show status of all services
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack metrics-test             Test metrics collection (CPU/GPU)

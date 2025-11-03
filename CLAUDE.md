@@ -320,6 +320,83 @@ Health check
 - `service.update.rollback`: Rollback initiated
 - `service.update.rollback.success`: Rollback succeeded
 
+### Backend Binding Architecture
+
+The backend binding subsystem (`internal/services/backend_binding.go`) provides dynamic backend switching for Open WebUI:
+
+**Backend Types**:
+- `BackendOllama`: Ollama backend (http://aistack-ollama:11434)
+- `BackendLocalAI`: LocalAI backend (http://aistack-localai:8080)
+
+**UIBinding Structure**:
+- `ActiveBackend`: Currently selected backend (BackendType)
+- `URL`: Backend URL for API communication
+- JSON serialization for state persistence
+
+**BackendBindingManager**:
+- `GetBinding()`: Load current binding or return Ollama default
+- `SetBinding(backend BackendType)`: Persist backend selection to JSON
+- `SwitchBackend(newBackend BackendType)`: Switch backend and return old backend
+- State persisted to `/var/lib/aistack/ui_binding.json`
+- Atomic writes for crash safety
+
+**OpenWebUI Service Integration**:
+- `SwitchBackend(backend BackendType)`: Changes backend with service restart
+- `GetCurrentBackend()`: Query currently active backend
+- Workflow: Update state → Set environment variable → Restart service
+- Idempotency: Skip restart if backend unchanged
+
+**Backend Switch Workflow**:
+```
+CLI: aistack backend <ollama|localai>
+  ↓
+BackendBindingManager.SwitchBackend()
+  ↓
+Get current binding from ui_binding.json
+  ↓
+Compare with requested backend
+  ├─ Same → Return (no change needed)
+  └─ Different → Continue
+      ↓
+      SetBinding(newBackend)
+      ↓
+      Persist to ui_binding.json
+      ↓
+      GetBackendURL(newBackend)
+      ↓
+      Set OLLAMA_BASE_URL environment
+      ↓
+      Stop OpenWebUI service
+      ↓
+      Start OpenWebUI service
+      ↓
+      Health check via compose
+```
+
+**Environment Integration**:
+- `OLLAMA_BASE_URL`: Environment variable for docker compose
+- Set before service restart to apply backend change
+- Compose template uses `${OLLAMA_BASE_URL:-http://aistack-ollama:11434}`
+
+**CLI Commands**:
+- `aistack backend <ollama|localai>`: Switch backend with validation
+- User-friendly output: Current backend, switch progress, success message
+- Error handling: Invalid backend names rejected with clear messages
+
+**Event Logging**:
+- `openwebui.backend.switch.start`: Backend switch initiated
+- `openwebui.backend.switch.no_change`: Backend already set (idempotent)
+- `openwebui.backend.switch.restart`: Service restart for backend change
+- `openwebui.backend.switch.success`: Backend switched successfully
+- `ui.backend.changed`: Backend binding updated
+- `ui.backend.switched`: Backend switched with from/to tracking
+
+**Testing Pattern**:
+- All tests use temporary directories for state isolation
+- Table-driven tests for backend validation
+- Idempotency testing (switch to same backend)
+- State persistence verification (JSON format, file creation)
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

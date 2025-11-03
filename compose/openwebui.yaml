@@ -13,7 +13,7 @@ services:
     networks:
       - aistack-net
     environment:
-      - OLLAMA_BASE_URL=http://aistack-ollama:11434
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://aistack-ollama:11434}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-aistack-secret-change-me}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
