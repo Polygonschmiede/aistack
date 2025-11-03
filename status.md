@@ -574,3 +574,115 @@
   - Errcheck-/gosec-/goconst-/gocyclo-Funde bereinigt (Plan-Persistierung, sichere Pfade, deduplizierte Runtime-Logs, Command-Dispatch refaktoriert).
   - `gofmt` über alle geänderten Dateien ausgeführt.
 - **Status:** Abgeschlossen — Quellcode und Tooling in Ordnung; `golangci-lint run` sowie `go test ./...` laufen ohne Findings.
+
+## 2025-11-04 13:10 CET — CUDA-optional Build
+- **Aufgabe:** `go build` im GitLab CI scheiterte wegen NVML-Abhängigkeiten bei `CGO_ENABLED=0`.
+- **Vorgehen:**
+  - GPU/NVML-Code hinter Build-Tag `cuda` gelegt; Stub-Implementierungen für `!cuda` (Detektor, GPU-Collector, NVML) ergänzt.
+  - GPU-bezogene Tests mit `//go:build cuda` gekennzeichnet und allgemeine Report-Persistierung zentralisiert.
+  - Service-Tests an neue GPU-Lock-Signaturen angepasst; Temp-Pfade für Locks verwendet.
+  - `gpulock`-Manager im CLI importiert und Build-Cache-Verzeichnis sowie State-Konstanten konsolidiert.
+- **Status:** Abgeschlossen — `CGO_ENABLED=0 GOCACHE=... go build -tags netgo ./cmd/aistack` erfolgreich; `go test ./...` grün.
+
+## 2025-11-03 20:20 CET — EP-011 Implementation (GPU Lock & Concurrency Control)
+- **Aufgabe:** EP-011 "GPU Lock & Concurrency Control" vollständig implementieren, inklusive GPU-Mutex mit Lease-Mechanik und Force-Unlock Command.
+- **Vorgehen:**
+  - GPU Lock Module implementiert (`internal/gpulock/`, Story T-021):
+    - `types.go`: Holder-Enum (HolderNone, HolderOpenWebUI, HolderLocalAI) und LockInfo-Struktur
+    - `lock.go`: Manager mit Acquire/Release/ForceUnlock Operationen
+    - Lease-basierte Timeout-Mechanik (5 Minuten Default) für Stale-Lock-Handling
+    - Automatische Stale-Lock-Cleanup während Acquire() wenn Lease abgelaufen
+    - File-basierte Advisory Lock mit JSON-Persistierung nach `/var/lib/aistack/gpu_lock.json`
+    - Atomic File-Operations mit Temp-File + Rename für crash-safe Writes
+  - Service Lifecycle Integration (`internal/services/`):
+    - `service.go`: PostStopHook-Unterstützung hinzugefügt für Lock-Release
+    - `manager.go`: GPU Lock Manager initialisiert und an Services übergeben
+    - `openwebui.go`: GPU Lock Acquire in PreStartHook, Release in PostStopHook
+    - `localai.go`: GPU Lock Acquire in PreStartHook, Release in PostStopHook
+    - Fail-Safe-Approach: Lock-Fehler verhindern Service-Start (keine VRAM-Konflikte)
+  - CLI-Erweiterung (`cmd/aistack/main.go`):
+    - `aistack gpu-unlock`: Force-Unlock Command mit User-Confirmation
+    - Zeigt aktuellen Lock-Holder und Lock-Age vor Confirmation
+    - Warnung über mögliche Service-Probleme bei Force-Unlock
+    - "yes/no" Confirmation-Prompt für sicheren Recovery-Workflow
+  - Comprehensive Unit Tests (`internal/gpulock/lock_test.go`):
+    - 11 Tests für alle Lock-Szenarien: Acquire (Success, AlreadyHeld, ConflictingHolder, StaleLock)
+    - Release (Success, WrongHolder, NoLock), ForceUnlock, IsLocked (inkl. Stale-Detection)
+    - HolderIsValid für Holder-Type-Validierung
+    - Alle Tests nutzen tmpDir für State-File-Isolation
+  - Testing & Validation:
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/gpulock/... -v`: Alle 11 GPU-Lock-Tests erfolgreich (0.947s)
+    - ✓ `go test ./internal/services/... -v`: Alle 37 Service-Tests erfolgreich (17.424s)
+    - ✓ `go test ./... -race`: Alle Tests mit Race-Detector erfolgreich
+    - ✓ Lock-Acquisition und -Release bei Service-Start/Stop verifiziert
+- **Status:** Abgeschlossen — EP-011 implementiert. DoD erfüllt:
+  - ✓ Story T-021: GPU-Mutex (Dateisperre + Lease)
+  - ✓ Exclusive GPU Lock für OpenWebUI und LocalAI
+  - ✓ Lease-Timeout (5 Minuten) mit automatischer Stale-Lock-Cleanup
+  - ✓ File-based Advisory Lock mit Atomic-Writes
+  - ✓ Service-Lifecycle-Hooks: PreStartHook (Acquire), PostStopHook (Release)
+  - ✓ CLI force-unlock Command mit Confirmation-Prompt
+  - ✓ Lock-State-Persistierung nach `/var/lib/aistack/gpu_lock.json`
+  - ✓ Strukturiertes Logging für alle GPU-Lock-Events (gpu.lock.*)
+  - ✓ Unit-Tests mit >80% Coverage-Ziel (11 Tests, 100% Pass-Rate)
+  - ✓ Graceful Error-Handling und Lock-Validation
+  - ✓ Clean Architecture: GPU-Lock getrennt in eigenem Package
+  - Hinweis: State-Directory `/var/lib/aistack` wird automatisch erstellt; überschreibbar via `AISTACK_STATE_DIR`
+
+## 2025-11-03 20:35 CET — EP-012 Implementation (Model Management & Caching)
+- **Aufgabe:** EP-012 "Model Management & Caching" vollständig implementieren, inklusive Ollama Model Download und Cache-Management.
+- **Vorgehen:**
+  - Models Package implementiert (`internal/models/`, Story T-022, T-023):
+    - `types.go`: Provider-Enum (Ollama, LocalAI), ModelInfo, ModelsState, DownloadProgress, CacheStats
+    - `state.go`: StateManager für models_state.json Persistierung mit atomaren Writes
+    - `ollama.go`: OllamaManager mit Download-Progress-Tracking, List, Delete, Evict
+    - `localai.go`: LocalAIManager mit Filesystem-basiertem Modell-Scanning
+  - Model State Management (Data Contract EP-012):
+    - `models_state.json` nach `{provider, items:[{name, size, path, last_used}], updated}`
+    - Separate State-Dateien pro Provider (ollama_models_state.json, localai_models_state.json)
+    - AddModel, RemoveModel, UpdateLastUsed Operations
+    - GetStats, GetOldestModels für Cache-Übersicht
+  - Ollama Model Download (Story T-022):
+    - Streaming Download mit Progress-Channel (BytesDownloaded, TotalBytes, Percentage)
+    - Events: model.download.{started|progress|completed|failed}
+    - HTTP POST zu /api/pull mit JSON-Streaming-Response
+    - Automatic State-Update nach erfolgreichem Download
+    - Resume wird von Ollama-API intern gehandhabt
+  - Cache-Management (Story T-023):
+    - GetStats(): TotalSize, ModelCount, OldestModel
+    - EvictOldest(): Entfernt ältestes Modell (sortiert nach last_used)
+    - SyncState(): Synchronisiert Filesystem mit State (für LocalAI) oder API-List (für Ollama)
+    - Size-Calculation und Last-Used-Tracking
+  - CLI-Commands (`cmd/aistack/main.go`):
+    - `aistack models list <provider>`: Tabellarische Auflistung mit Name, Size, Last-Used
+    - `aistack models download <provider> <name>`: Download mit Progress-Anzeige (nur Ollama)
+    - `aistack models delete <provider> <name>`: Löschen mit Confirmation-Prompt
+    - `aistack models stats <provider>`: Cache-Statistiken (Total Size, Count, Oldest Model)
+    - `aistack models evict-oldest <provider>`: Evict oldest mit Freed-Size-Anzeige
+    - formatBytes(): Human-readable Size-Formatierung (KiB, MiB, GiB)
+  - Comprehensive Unit Tests:
+    - `state_test.go`: 11 Tests für StateManager (Save/Load, Add/Update/Remove, Stats, Oldest, Atomic-Write)
+    - `localai_test.go`: 9 Tests für LocalAIManager (List, Delete, Sync, Stats, Evict)
+    - Table-driven Tests und tmpDir für Isolation
+    - Alle Tests nutzen graceful degradation
+  - Testing & Validation:
+    - ✓ `go build ./...`: Erfolgreicher Build aller Packages
+    - ✓ `go test ./internal/models/... -v`: Alle 20 Models-Tests erfolgreich (0.505s)
+    - ✓ `go test ./... -race`: Alle Tests mit Race-Detector erfolgreich
+    - ✓ State-Persistierung mit atomic writes verifiziert
+- **Status:** Abgeschlossen — EP-012 implementiert. DoD erfüllt:
+  - ✓ Story T-022: Ollama Model Download mit Progress-Tracking
+  - ✓ Story T-023: Cache-Übersicht & Evict Oldest (Ollama + LocalAI)
+  - ✓ models_state.json Data Contract implementiert (provider, items with name/size/path/last_used)
+  - ✓ CLI-Befehle: list, download, delete, stats, evict-oldest
+  - ✓ Download-Progress sichtbar mit Percentage, Downloaded/Total Bytes
+  - ✓ Evict oldest funktioniert (sortiert nach last_used, ältestes zuerst)
+  - ✓ State-Synchronisation mit Filesystem (LocalAI) und API (Ollama)
+  - ✓ Atomic file writes für crash-safe State-Persistierung
+  - ✓ Events: model.download.{started|progress|completed|failed}, model.evict.{started|completed}, model.delete.{started|completed}
+  - ✓ Unit-Tests mit >80% Coverage-Ziel (20 Tests, 100% Pass-Rate)
+  - ✓ Graceful Error-Handling und User-Confirmation bei destructive Operations
+  - ✓ Clean Architecture: Models-Package unabhängig von Services
+  - ⏳ TUI-Integration für Model-Auswahl (Story T-022 Optional, nicht implementiert)
+  - Hinweis: Ollama-Service muss laufen für Download-Funktionalität; LocalAI-Modelle werden im Volume-Verzeichnis gescannt

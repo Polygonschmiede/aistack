@@ -38,6 +38,7 @@ type BaseService struct {
 	logger       *logging.Logger
 	netManager   *NetworkManager
 	preStartHook func() error
+	postStopHook func() error
 }
 
 // NewBaseService creates a new base service
@@ -98,7 +99,11 @@ func (s *BaseService) Start() error {
 
 // Stop stops the service
 func (s *BaseService) Stop() error {
-	return s.runComposeAction("stop", s.runtime.ComposeDown)
+	err := s.runComposeAction("stop", s.runtime.ComposeDown)
+	if err != nil {
+		return err
+	}
+	return s.executePostStopHook()
 }
 
 func (s *BaseService) runComposeAction(action string, execFn func(string) error) error {
@@ -136,6 +141,28 @@ func (s *BaseService) executePreStartHook() error {
 			"error":   err.Error(),
 		})
 		return fmt.Errorf("pre-start hook failed for %s: %w", s.name, err)
+	}
+
+	return nil
+}
+
+// SetPostStopHook registers a hook executed after ComposeDown during Stop
+func (s *BaseService) SetPostStopHook(hook func() error) {
+	s.postStopHook = hook
+}
+
+func (s *BaseService) executePostStopHook() error {
+	if s.postStopHook == nil {
+		return nil
+	}
+
+	if err := s.postStopHook(); err != nil {
+		s.logger.Warn("service.stop.posthook_failed", "Post-stop hook failed", map[string]interface{}{
+			"service": s.name,
+			"error":   err.Error(),
+		})
+		// Don't return error - service is already stopped
+		// Just log the warning
 	}
 
 	return nil

@@ -13,8 +13,10 @@ import (
 
 	"aistack/internal/agent"
 	"aistack/internal/gpu"
+	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 	"aistack/internal/metrics"
+	"aistack/internal/models"
 	"aistack/internal/services"
 	"aistack/internal/tui"
 	"aistack/internal/wol"
@@ -53,12 +55,14 @@ func commandHandlers() map[string]func() {
 		"remove":       runRemove,
 		"backend":      runBackendSwitch,
 		"gpu-check":    runGPUCheck,
+		"gpu-unlock":   runGPUUnlock,
 		"metrics-test": runMetricsTest,
 		"wol-check":    runWoLCheck,
 		"wol-setup":    runWoLSetup,
 		"wol-send":     runWoLSend,
 		"wol-apply":    runWoLApply,
 		"wol-relay":    runWoLRelay,
+		"models":       runModels,
 		"version":      runVersion,
 		"help":         printUsage,
 		"--help":       printUsage,
@@ -477,6 +481,64 @@ func runMetricsTest() {
 	fmt.Println("Sample data written to: /tmp/aistack_metrics_test.jsonl")
 }
 
+// runGPUUnlock forcibly removes the GPU lock
+// Story T-021: GPU-Mutex (Dateisperre + Lease)
+func runGPUUnlock() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	// Get state directory from env or use default
+	stateDir := os.Getenv("AISTACK_STATE_DIR")
+	if stateDir == "" {
+		stateDir = "/var/lib/aistack"
+	}
+
+	manager := gpulock.NewManager(stateDir, logger)
+
+	// Check current lock status
+	status, err := manager.GetStatus()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to get GPU lock status: %v\n", err)
+		os.Exit(1)
+	}
+
+	if status.Holder == gpulock.HolderNone {
+		fmt.Println("GPU is not locked.")
+		return
+	}
+
+	// Display lock information
+	fmt.Printf("Current GPU lock holder: %s\n", status.Holder)
+	fmt.Printf("Lock acquired: %s\n", status.SinceTS.Format(time.RFC3339))
+	fmt.Printf("Age: %s\n", time.Since(status.SinceTS).Round(time.Second))
+	fmt.Println()
+
+	// Warn user
+	fmt.Println("⚠️  Warning: Force unlocking the GPU may cause issues if the service is still using it.")
+	fmt.Println()
+	fmt.Print("Are you sure you want to force unlock? (yes/no): ")
+
+	var response string
+	if _, err := fmt.Scanln(&response); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to read response: %v\n", err)
+		os.Exit(1)
+	}
+
+	if strings.ToLower(response) != "yes" {
+		fmt.Println("Aborted.")
+		return
+	}
+
+	// Force unlock
+	if err := manager.ForceUnlock(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to force unlock GPU: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("✓ GPU lock forcibly removed")
+	fmt.Println()
+	fmt.Println("You can now start another GPU-intensive service.")
+}
+
 // runWoLCheck checks Wake-on-LAN status for network interfaces
 func runWoLCheck() {
 	logger := logging.NewLogger(logging.LevelInfo)
@@ -868,6 +930,364 @@ func runBackendSwitch() {
 	fmt.Println("Access it at: http://localhost:3000")
 }
 
+// runModels handles model management commands
+// Story T-022, T-023: Model management & caching
+func runModels() {
+	if len(os.Args) < 3 {
+		printModelsUsage()
+		os.Exit(1)
+	}
+
+	subcommand := strings.ToLower(os.Args[2])
+
+	switch subcommand {
+	case "list":
+		runModelsList()
+	case "download":
+		runModelsDownload()
+	case "delete":
+		runModelsDelete()
+	case "stats":
+		runModelsStats()
+	case "evict-oldest":
+		runModelsEvictOldest()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown models subcommand: %s\n\n", subcommand)
+		printModelsUsage()
+		os.Exit(1)
+	}
+}
+
+// printModelsUsage displays model management usage
+func printModelsUsage() {
+	fmt.Println("Model Management Commands:")
+	fmt.Println()
+	fmt.Println("  aistack models list <provider>           List all models for provider (ollama, localai)")
+	fmt.Println("  aistack models download <provider> <name> Download a model")
+	fmt.Println("  aistack models delete <provider> <name>   Delete a model")
+	fmt.Println("  aistack models stats <provider>           Show cache statistics")
+	fmt.Println("  aistack models evict-oldest <provider>    Remove oldest model to free space")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  aistack models list ollama")
+	fmt.Println("  aistack models download ollama qwen2:7b-instruct-q4")
+	fmt.Println("  aistack models stats ollama")
+	fmt.Println("  aistack models evict-oldest localai")
+}
+
+// runModelsList lists all models for a provider
+func runModelsList() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack models list <provider>\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack models list ollama\n")
+		os.Exit(1)
+	}
+
+	providerStr := strings.ToLower(os.Args[3])
+	provider := models.Provider(providerStr)
+
+	if !provider.IsValid() {
+		fmt.Fprintf(os.Stderr, "❌ Invalid provider: %s (must be ollama or localai)\n", providerStr)
+		os.Exit(1)
+	}
+
+	stateDir := getStateDir()
+
+	var modelsList []models.ModelInfo
+	var err error
+
+	switch provider {
+	case models.ProviderOllama:
+		manager := models.NewOllamaManager(stateDir, logger)
+		if err := manager.SyncState(); err != nil {
+			logger.Warn("models.list.sync_failed", "Failed to sync state", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		modelsList, err = manager.List()
+	case models.ProviderLocalAI:
+		// LocalAI models directory is typically in the volume
+		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
+		if err := manager.SyncState(); err != nil {
+			logger.Warn("models.list.sync_failed", "Failed to sync state", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+		modelsList, err = manager.List()
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to list models: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(modelsList) == 0 {
+		fmt.Printf("No models found for %s\n", provider)
+		return
+	}
+
+	fmt.Printf("Models for %s (%d total):\n\n", provider, len(modelsList))
+	fmt.Printf("%-40s %12s %20s\n", "NAME", "SIZE", "LAST USED")
+	fmt.Println(strings.Repeat("-", 75))
+
+	for _, model := range modelsList {
+		sizeStr := formatBytes(model.Size)
+		lastUsedStr := model.LastUsed.Format("2006-01-02 15:04")
+		fmt.Printf("%-40s %12s %20s\n", model.Name, sizeStr, lastUsedStr)
+	}
+}
+
+// runModelsDownload downloads a model
+func runModelsDownload() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack models download <provider> <model-name>\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack models download ollama qwen2:7b-instruct-q4\n")
+		os.Exit(1)
+	}
+
+	providerStr := strings.ToLower(os.Args[3])
+	provider := models.Provider(providerStr)
+	modelName := os.Args[4]
+
+	if !provider.IsValid() {
+		fmt.Fprintf(os.Stderr, "❌ Invalid provider: %s (must be ollama or localai)\n", providerStr)
+		os.Exit(1)
+	}
+
+	if provider != models.ProviderOllama {
+		fmt.Fprintf(os.Stderr, "❌ Model download is currently only supported for Ollama\n")
+		fmt.Fprintf(os.Stderr, "   LocalAI models must be manually placed in the models directory\n")
+		os.Exit(1)
+	}
+
+	stateDir := getStateDir()
+	manager := models.NewOllamaManager(stateDir, logger)
+
+	fmt.Printf("Downloading model: %s\n", modelName)
+	fmt.Printf("Provider: %s\n\n", provider)
+
+	// Create progress channel
+	progressChan := make(chan models.DownloadProgress, 10)
+	done := make(chan error, 1)
+
+	// Start download in goroutine
+	go func() {
+		done <- manager.Download(modelName, progressChan)
+	}()
+
+	// Display progress
+	lastPercentage := -1.0
+	for {
+		select {
+		case progress := <-progressChan:
+			switch progress.Status {
+			case "started":
+				fmt.Println("Download started...")
+			case "progress":
+				if progress.Percentage != lastPercentage {
+					if progress.TotalBytes > 0 {
+						fmt.Printf("\rProgress: %.1f%% (%s / %s)",
+							progress.Percentage,
+							formatBytes(progress.BytesDownloaded),
+							formatBytes(progress.TotalBytes))
+					} else {
+						fmt.Printf("\rDownloaded: %s", formatBytes(progress.BytesDownloaded))
+					}
+					lastPercentage = progress.Percentage
+				}
+			case "completed":
+				fmt.Printf("\r✓ Download completed successfully\n")
+			case "failed":
+				fmt.Printf("\n❌ Download failed: %s\n", progress.Error)
+			}
+		case err := <-done:
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\n❌ Download failed: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println()
+			fmt.Printf("Model %s is now available for use\n", modelName)
+			return
+		}
+	}
+}
+
+// runModelsDelete deletes a model
+func runModelsDelete() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 5 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack models delete <provider> <model-name>\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack models delete ollama qwen2:7b-instruct-q4\n")
+		os.Exit(1)
+	}
+
+	providerStr := strings.ToLower(os.Args[3])
+	provider := models.Provider(providerStr)
+	modelName := os.Args[4]
+
+	if !provider.IsValid() {
+		fmt.Fprintf(os.Stderr, "❌ Invalid provider: %s (must be ollama or localai)\n", providerStr)
+		os.Exit(1)
+	}
+
+	stateDir := getStateDir()
+
+	fmt.Printf("⚠️  Warning: This will permanently delete model: %s\n", modelName)
+	fmt.Printf("Provider: %s\n", provider)
+	fmt.Print("Are you sure? (yes/no): ")
+
+	var response string
+	fmt.Scanln(&response)
+
+	if strings.ToLower(response) != "yes" {
+		fmt.Println("Aborted.")
+		return
+	}
+
+	var err error
+	switch provider {
+	case models.ProviderOllama:
+		manager := models.NewOllamaManager(stateDir, logger)
+		err = manager.Delete(modelName)
+	case models.ProviderLocalAI:
+		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
+		err = manager.Delete(modelName)
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to delete model: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Model %s deleted successfully\n", modelName)
+}
+
+// runModelsStats shows cache statistics
+func runModelsStats() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack models stats <provider>\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack models stats ollama\n")
+		os.Exit(1)
+	}
+
+	providerStr := strings.ToLower(os.Args[3])
+	provider := models.Provider(providerStr)
+
+	if !provider.IsValid() {
+		fmt.Fprintf(os.Stderr, "❌ Invalid provider: %s (must be ollama or localai)\n", providerStr)
+		os.Exit(1)
+	}
+
+	stateDir := getStateDir()
+
+	var stats *models.CacheStats
+	var err error
+
+	switch provider {
+	case models.ProviderOllama:
+		manager := models.NewOllamaManager(stateDir, logger)
+		stats, err = manager.GetStats()
+	case models.ProviderLocalAI:
+		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
+		stats, err = manager.GetStats()
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to get stats: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Cache Statistics for %s:\n\n", provider)
+	fmt.Printf("  Total Models: %d\n", stats.ModelCount)
+	fmt.Printf("  Total Size:   %s\n", formatBytes(stats.TotalSize))
+
+	if stats.OldestModel != nil {
+		fmt.Printf("\nOldest Model:\n")
+		fmt.Printf("  Name:       %s\n", stats.OldestModel.Name)
+		fmt.Printf("  Size:       %s\n", formatBytes(stats.OldestModel.Size))
+		fmt.Printf("  Last Used:  %s\n", stats.OldestModel.LastUsed.Format("2006-01-02 15:04:05"))
+		fmt.Printf("  Age:        %s\n", time.Since(stats.OldestModel.LastUsed).Round(time.Second))
+	}
+}
+
+// runModelsEvictOldest evicts the oldest model
+func runModelsEvictOldest() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 4 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack models evict-oldest <provider>\n")
+		fmt.Fprintf(os.Stderr, "Example: aistack models evict-oldest ollama\n")
+		os.Exit(1)
+	}
+
+	providerStr := strings.ToLower(os.Args[3])
+	provider := models.Provider(providerStr)
+
+	if !provider.IsValid() {
+		fmt.Fprintf(os.Stderr, "❌ Invalid provider: %s (must be ollama or localai)\n", providerStr)
+		os.Exit(1)
+	}
+
+	stateDir := getStateDir()
+
+	var evicted *models.ModelInfo
+	var err error
+
+	switch provider {
+	case models.ProviderOllama:
+		manager := models.NewOllamaManager(stateDir, logger)
+		evicted, err = manager.EvictOldest()
+	case models.ProviderLocalAI:
+		modelsPath := "/var/lib/aistack/volumes/localai_models"
+		manager := models.NewLocalAIManager(stateDir, modelsPath, logger)
+		evicted, err = manager.EvictOldest()
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to evict oldest model: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✓ Evicted oldest model: %s\n", evicted.Name)
+	fmt.Printf("  Size freed:  %s\n", formatBytes(evicted.Size))
+	fmt.Printf("  Last used:   %s (%s ago)\n",
+		evicted.LastUsed.Format("2006-01-02 15:04"),
+		time.Since(evicted.LastUsed).Round(time.Second))
+}
+
+// formatBytes formats bytes to human-readable format
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// getStateDir returns the state directory
+func getStateDir() string {
+	stateDir := os.Getenv("AISTACK_STATE_DIR")
+	if stateDir == "" {
+		stateDir = "/var/lib/aistack"
+	}
+	return stateDir
+}
+
 // printUsage displays usage information
 func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
@@ -886,14 +1306,23 @@ Usage:
   aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
   aistack status                   Show status of all services
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
+  aistack gpu-unlock               Force unlock GPU mutex (recovery)
   aistack metrics-test             Test metrics collection (CPU/GPU)
   aistack wol-check                Check Wake-on-LAN status
   aistack wol-setup <interface>    Enable Wake-on-LAN on interface (requires root)
   aistack wol-send <mac> [ip]      Send Wake-on-LAN magic packet
   aistack wol-apply [interface]    Reapply persisted WoL configuration (for udev/systemd)
   aistack wol-relay [flags]        Start HTTP→WoL relay (use --key or AISTACK_WOL_RELAY_KEY)
+  aistack models <subcommand>      Model management (list, download, delete, stats, evict-oldest)
   aistack version                  Print version information
   aistack help                     Show this help message
+
+Model Management:
+  aistack models list <provider>           List all models (ollama, localai)
+  aistack models download <provider> <name> Download a model (ollama only)
+  aistack models delete <provider> <name>   Delete a model
+  aistack models stats <provider>           Show cache statistics
+  aistack models evict-oldest <provider>    Remove oldest model to free space
 
 For more information, visit: https://github.com/polygonschmiede/aistack
 `, version)

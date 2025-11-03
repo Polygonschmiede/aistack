@@ -1,8 +1,11 @@
 package services
 
 import (
-	"aistack/internal/logging"
+	"os"
 	"testing"
+
+	"aistack/internal/gpulock"
+	"aistack/internal/logging"
 )
 
 func TestBaseService_Name(t *testing.T) {
@@ -47,7 +50,8 @@ func TestOpenWebUIService_Creation(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewOpenWebUIService("./compose", runtime, logger, nil)
+	gpuLock := gpulock.NewManager(os.TempDir(), logger)
+	service := NewOpenWebUIService("./compose", runtime, logger, nil, gpuLock)
 
 	if service.Name() != "openwebui" {
 		t.Errorf("Expected name 'openwebui', got: %s", service.Name())
@@ -58,7 +62,8 @@ func TestLocalAIService_Creation(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewLocalAIService("./compose", runtime, logger, nil)
+	gpuLock := gpulock.NewManager(os.TempDir(), logger)
+	service := NewLocalAIService("./compose", runtime, logger, nil, gpuLock)
 
 	if service.Name() != "localai" {
 		t.Errorf("Expected name 'localai', got: %s", service.Name())
@@ -117,7 +122,8 @@ func TestLocalAIService_Update(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	service := NewLocalAIService("./compose", runtime, logger, nil)
+	gpuLock := gpulock.NewManager(os.TempDir(), logger)
+	service := NewLocalAIService("./compose", runtime, logger, nil, gpuLock)
 
 	// Set up mock to return different image IDs
 	runtime.ImageID = "old-image-id"

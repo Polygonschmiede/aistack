@@ -1,8 +1,11 @@
 package services
 
 import (
-	"aistack/internal/logging"
 	"fmt"
+	"os"
+
+	"aistack/internal/gpulock"
+	"aistack/internal/logging"
 )
 
 // Manager coordinates all services
@@ -12,6 +15,7 @@ type Manager struct {
 	composeDir string
 	services   map[string]Service
 	imageLock  *VersionLock
+	gpuLock    *gpulock.Manager
 }
 
 // NewManager creates a new service manager
@@ -27,18 +31,28 @@ func NewManager(composeDir string, logger *logging.Logger) (*Manager, error) {
 		return nil, err
 	}
 
+	// Get state directory from env or use default
+	stateDir := os.Getenv("AISTACK_STATE_DIR")
+	if stateDir == "" {
+		stateDir = defaultStateDir
+	}
+
+	// Create GPU lock manager
+	gpuLockManager := gpulock.NewManager(stateDir, logger)
+
 	manager := &Manager{
 		runtime:    runtime,
 		logger:     logger,
 		composeDir: composeDir,
 		services:   make(map[string]Service),
 		imageLock:  lock,
+		gpuLock:    gpuLockManager,
 	}
 
 	// Register services
 	manager.services["ollama"] = NewOllamaService(composeDir, runtime, logger, lock)
-	manager.services["openwebui"] = NewOpenWebUIService(composeDir, runtime, logger, lock)
-	manager.services["localai"] = NewLocalAIService(composeDir, runtime, logger, lock)
+	manager.services["openwebui"] = NewOpenWebUIService(composeDir, runtime, logger, lock, gpuLockManager)
+	manager.services["localai"] = NewLocalAIService(composeDir, runtime, logger, lock, gpuLockManager)
 
 	return manager, nil
 }

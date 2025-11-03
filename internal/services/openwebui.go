@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 )
 
@@ -15,14 +16,16 @@ const (
 // OpenWebUIService manages the Open WebUI container service
 // Story T-007: Compose-Template: Open WebUI mit Backend-Binding
 // Story T-019: Backend-Switch (Ollama ↔ LocalAI)
+// Story T-021: GPU-Mutex (Dateisperre + Lease)
 type OpenWebUIService struct {
 	*BaseService
 	updater        *ServiceUpdater
 	bindingManager *BackendBindingManager
+	gpuLock        *gpulock.Manager
 }
 
 // NewOpenWebUIService creates a new Open WebUI service
-func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock) *OpenWebUIService {
+func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock, gpuLock *gpulock.Manager) *OpenWebUIService {
 	healthCheck := DefaultHealthCheck("http://localhost:3000/")
 	volumes := []string{"openwebui_data"}
 
@@ -36,6 +39,13 @@ func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Log
 
 	updater := NewServiceUpdater(base, runtime, OpenWebUIImageName, healthCheck, logger, stateDir, lock)
 	bindingManager := NewBackendBindingManager(stateDir, logger)
+
+	service := &OpenWebUIService{
+		BaseService:    base,
+		updater:        updater,
+		bindingManager: bindingManager,
+		gpuLock:        gpuLock,
+	}
 
 	base.SetPreStartHook(func() error {
 		if err := updater.EnforceImagePolicy(); err != nil {
@@ -51,14 +61,21 @@ func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Log
 			return fmt.Errorf("failed to set OLLAMA_BASE_URL: %w", err)
 		}
 
+		// Acquire GPU lock
+		// Story T-021: GPU-Mutex (Dateisperre + Lease)
+		if err := gpuLock.Acquire(gpulock.HolderOpenWebUI); err != nil {
+			return fmt.Errorf("failed to acquire GPU lock: %w", err)
+		}
+
 		return nil
 	})
 
-	return &OpenWebUIService{
-		BaseService:    base,
-		updater:        updater,
-		bindingManager: bindingManager,
-	}
+	base.SetPostStopHook(func() error {
+		// Release GPU lock
+		return gpuLock.Release(gpulock.HolderOpenWebUI)
+	})
+
+	return service
 }
 
 // Update updates the Open WebUI service to the latest version

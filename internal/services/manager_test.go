@@ -1,8 +1,11 @@
 package services
 
 import (
-	"aistack/internal/logging"
+	"os"
 	"testing"
+
+	"aistack/internal/gpulock"
+	"aistack/internal/logging"
 )
 
 // MockManager for testing without actual Docker
@@ -22,9 +25,12 @@ func NewMockManager() *MockManager {
 	}
 
 	// Register mock services
+	lockStateDir := os.TempDir()
+	gpuLock := gpulock.NewManager(lockStateDir, logger)
+
 	manager.services["ollama"] = NewOllamaService("./compose", runtime, logger, nil)
-	manager.services["openwebui"] = NewOpenWebUIService("./compose", runtime, logger, nil)
-	manager.services["localai"] = NewLocalAIService("./compose", runtime, logger, nil)
+	manager.services["openwebui"] = NewOpenWebUIService("./compose", runtime, logger, nil, gpuLock)
+	manager.services["localai"] = NewLocalAIService("./compose", runtime, logger, nil, gpuLock)
 
 	return &MockManager{Manager: manager}
 }

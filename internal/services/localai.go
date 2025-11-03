@@ -1,8 +1,10 @@
 package services
 
 import (
+	"fmt"
 	"os"
 
+	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 )
 
@@ -13,14 +15,16 @@ const (
 
 // LocalAIService manages the LocalAI container service
 // Story T-008: Compose-Template: LocalAI Service (Health & Volume)
+// Story T-021: GPU-Mutex (Dateisperre + Lease)
 type LocalAIService struct {
 	*BaseService
 	updater  *ServiceUpdater
 	registry *LocalAIModelsRegistry
+	gpuLock  *gpulock.Manager
 }
 
 // NewLocalAIService creates a new LocalAI service
-func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock) *LocalAIService {
+func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logger, lock *VersionLock, gpuLock *gpulock.Manager) *LocalAIService {
 	healthCheck := DefaultHealthCheck("http://localhost:8080/healthz")
 	volumes := []string{"localai_models"}
 
@@ -35,18 +39,36 @@ func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logge
 	updater := NewServiceUpdater(base, runtime, LocalAIImageName, healthCheck, logger, stateDir, lock)
 	registry := NewLocalAIModelsRegistry(stateDir, logger)
 
+	service := &LocalAIService{
+		BaseService: base,
+		updater:     updater,
+		registry:    registry,
+		gpuLock:     gpuLock,
+	}
+
 	base.SetPreStartHook(func() error {
 		if err := updater.EnforceImagePolicy(); err != nil {
 			return err
 		}
-		return registry.Ensure()
+		if err := registry.Ensure(); err != nil {
+			return err
+		}
+
+		// Acquire GPU lock
+		// Story T-021: GPU-Mutex (Dateisperre + Lease)
+		if err := gpuLock.Acquire(gpulock.HolderLocalAI); err != nil {
+			return fmt.Errorf("failed to acquire GPU lock: %w", err)
+		}
+
+		return nil
 	})
 
-	return &LocalAIService{
-		BaseService: base,
-		updater:     updater,
-		registry:    registry,
-	}
+	base.SetPostStopHook(func() error {
+		// Release GPU lock
+		return gpuLock.Release(gpulock.HolderLocalAI)
+	})
+
+	return service
 }
 
 // Update updates the LocalAI service to the latest version
