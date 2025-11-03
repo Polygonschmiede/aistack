@@ -1,0 +1,3 @@
+# Persist Wake-on-LAN configuration via aistack CLI
+# Triggers on physical network interfaces and reapplies configured WoL mode.
+SUBSYSTEM=="net", ACTION=="add|change", ATTR{type}=="1", KERNEL!="lo", RUN+="/usr/local/bin/aistack wol-apply %k"

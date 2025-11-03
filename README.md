@@ -48,15 +48,44 @@ make run           # Run directly with go run
 make coverage      # Generate coverage report
 ```
 
+### CLI Commands
+
+```bash
+./aistack                          # Start TUI (default)
+./aistack agent                    # Run as background agent service
+./aistack idle-check               # Perform idle evaluation (timer-triggered)
+./aistack install --profile <name> # Install from profile (standard-gpu, minimal)
+./aistack install <service>        # Install specific service (ollama, openwebui, localai)
+./aistack start <service>          # Start a service
+./aistack stop <service>           # Stop a service
+./aistack update <service>         # Update service to latest (with rollback)
+./aistack backend <ollama|localai> # Switch Open WebUI backend (restarts service)
+./aistack logs <service> [lines]   # Show service logs (default: 100 lines)
+./aistack remove <service> [--purge] # Remove a service (keeps data by default)
+./aistack status                   # Show status of all services
+./aistack gpu-check                # Check GPU and NVIDIA stack
+./aistack metrics-test             # Test metrics collection (3 samples)
+./aistack wol-check                # Check Wake-on-LAN status
+./aistack wol-setup <iface>        # Enable Wake-on-LAN (requires root)
+./aistack wol-send <mac> [ip]      # Send Wake-on-LAN magic packet
+./aistack version                  # Show version
+./aistack help                     # Show all commands
+```
+
 ## Project Status
 
 Currently implementing foundational epics:
 
 - ✅ **EP-001**: Repository & Tech Baseline (Go + TUI skeleton)
-- 🚧 **EP-002**: Bootstrap & System Integration
-- 🚧 **EP-003**: Container Runtime & Compose Assets
-- 📋 **EP-004**: NVIDIA Stack Detection
-- 📋 **EP-005**: Metrics & Sensors
+- ✅ **EP-002**: Bootstrap & System Integration (install.sh + systemd)
+- ✅ **EP-003**: Container Runtime & Compose Assets (Docker Compose)
+- ✅ **EP-004**: NVIDIA Stack Detection (NVML integration)
+- ✅ **EP-005**: Metrics & Sensors (CPU/GPU/Power monitoring)
+- ✅ **EP-006**: Idle Engine & Autosuspend (Sliding window detection)
+- ✅ **EP-007**: Wake-on-LAN Setup (WoL detection, magic packet sender)
+- ✅ **EP-008**: Ollama Orchestration (Lifecycle + Update/Rollback)
+- ✅ **EP-009**: Open WebUI Orchestration (Backend-Switch: Ollama ↔ LocalAI)
+- ✅ **EP-010**: LocalAI Orchestration (Lifecycle + Remove with Volume Handling)
 
 See `docs/features/epics.md` for complete roadmap.
 
@@ -70,6 +99,8 @@ aistack/
 │   ├── services/         # Container lifecycle management
 │   ├── power/            # Power monitoring and idle detection
 │   ├── metrics/          # GPU/CPU metrics collection
+│   ├── idle/             # Idle detection and autosuspend
+│   ├── wol/              # Wake-on-LAN detection and sender
 │   └── diag/             # Diagnostics and health checks
 ├── assets/               # systemd units, configs
 ├── compose/              # Docker Compose templates
@@ -86,6 +117,11 @@ Key settings:
 - `idle.*`: CPU/GPU thresholds, timeout
 - `wol.*`: Wake-on-LAN interface and MAC
 - `gpu_lock`: Exclusive GPU access control
+
+Environment overrides:
+- `AISTACK_COMPOSE_DIR` — absolute or relative path to packaged Compose bundles (defaults to the binary’s `compose/` directory).
+- `AISTACK_LOG_DIR` — writable directory for JSON/JSONL output such as `metrics.log` (defaults to `/var/log/aistack`, then falls back to a temp dir when unavailable).
+- `AISTACK_STATE_DIR` — idle state persistence root for developer runs; systemd deployments remain rooted at `/var/lib/aistack`.
 
 ## Development
 

@@ -1,0 +1,33 @@
+# LocalAI Service Compose Template
+# Story T-008: Compose-Template: LocalAI Service (Health & Volume)
+
+services:
+  localai:
+    image: quay.io/go-skynet/local-ai:latest
+    container_name: aistack-localai
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - localai_models:/models
+    networks:
+      - aistack-net
+    environment:
+      - THREADS=4
+      - CONTEXT_SIZE=512
+      - MODELS_PATH=/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# Include common definitions
+networks:
+  aistack-net:
+    external: true
+
+volumes:
+  localai_models:
+    external: true

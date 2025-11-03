@@ -13,6 +13,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+CONTAINER_RUNTIME=""
+
 # Logging functions
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $*"
@@ -83,6 +85,26 @@ check_internet() {
     fi
 
     log_info "✓ Internet connectivity verified"
+}
+
+# Ensure Docker or Podman is available before proceeding
+ensure_container_runtime() {
+    log_info "Ensuring container runtime availability..."
+
+    if check_docker_installed; then
+        CONTAINER_RUNTIME="docker"
+        log_event "bootstrap.runtime" "{\"runtime\":\"docker\",\"state\":\"detected\"}"
+        return 0
+    fi
+
+    if command -v podman &> /dev/null; then
+        CONTAINER_RUNTIME="podman"
+        log_info "Podman detected — Docker installation skipped (best-effort support)"
+        log_event "bootstrap.runtime" "{\"runtime\":\"podman\",\"state\":\"detected\"}"
+        return 0
+    fi
+
+    install_docker
 }
 
 # Check if Docker is already installed and running
@@ -173,6 +195,9 @@ install_docker() {
         log_info "✓ Docker installed successfully (version: $docker_version)"
         log_event "bootstrap.docker.installed" "{\"version\":\"$docker_version\"}"
 
+        CONTAINER_RUNTIME="docker"
+        log_event "bootstrap.runtime" "{\"runtime\":\"docker\",\"state\":\"installed\"}"
+
         # Test Docker with hello-world
         log_info "Running Docker test container..."
         if docker run --rm hello-world &> /dev/null; then
@@ -185,6 +210,80 @@ install_docker() {
     else
         log_error "Docker installation failed - service is not active"
         exit 1
+    fi
+}
+
+# Install or update the aistack CLI binary under /usr/local/bin
+install_cli_binary() {
+    log_info "Installing aistack CLI binary..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local candidates=(
+        "$script_dir/dist/aistack"
+        "$script_dir/../dist/aistack"
+        "$script_dir/aistack"
+    )
+
+    local source=""
+    for candidate in "${candidates[@]}"; do
+        if [[ -f "$candidate" ]]; then
+            source="$candidate"
+            break
+        fi
+    done
+
+    if [[ -z "$source" ]]; then
+        log_warn "aistack binary not found in dist/. Please build via 'make build' before running install.sh"
+        return
+    fi
+
+    install -m 0755 "$source" /usr/local/bin/aistack
+    log_info "✓ Installed CLI to /usr/local/bin/aistack"
+}
+
+# Ensure /etc/aistack/config.yaml exists with basic defaults
+ensure_config_defaults() {
+    local config_path="/etc/aistack/config.yaml"
+
+    if [[ -f "$config_path" ]]; then
+        log_info "✓ Existing config preserved: $config_path"
+        return
+    fi
+
+    cat > "$config_path" <<CONFIG
+container_runtime: ${CONTAINER_RUNTIME:-docker}
+profile: standard-gpu
+gpu_lock: true
+updates:
+  mode: rolling
+CONFIG
+
+    chown root:aistack "$config_path"
+    chmod 640 "$config_path"
+    log_info "✓ Created default config at $config_path"
+}
+
+# Deploy udev rules for persistent Wake-on-LAN configuration
+deploy_udev_rules() {
+    log_info "Deploying udev rules for Wake-on-LAN..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local udev_source="$script_dir/assets/udev/70-aistack-wol.rules"
+    local udev_target="/etc/udev/rules.d/70-aistack-wol.rules"
+
+    if [[ ! -f "$udev_source" ]]; then
+        log_warn "Udev rule template not found: $udev_source"
+        return
+    fi
+
+    cp "$udev_source" "$udev_target"
+    chmod 644 "$udev_target"
+    log_info "✓ Deployed udev rule: $(basename "$udev_target")"
+
+    if command -v udevadm &> /dev/null; then
+        udevadm control --reload-rules
+        udevadm trigger --subsystem-match=net || true
+        log_info "✓ Reloaded udev rules"
     fi
 }
 
@@ -328,16 +427,21 @@ main() {
     check_os_version
     check_internet
 
-    # Install Docker
-    install_docker
+    # Ensure container runtime
+    ensure_container_runtime
+
+    # Install CLI binary for system usage
+    install_cli_binary
 
     # Setup user and directories
     create_aistack_user
     create_directories
+    ensure_config_defaults
 
     # Deploy configurations
     deploy_systemd_units
     deploy_logrotate
+    deploy_udev_rules
 
     echo ""
     log_info "========================================="

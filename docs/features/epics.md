@@ -758,6 +758,7 @@
 **Data Contracts:**
 
 * `metrics.sample.jsonl`: `ts, cpu_util, cpu_w, gpu_util, gpu_mem, gpu_w, temp_cpu, temp_gpu, est_total_w`.
+  * Default location `/var/log/aistack/metrics.log`; developer builds may override via `AISTACK_LOG_DIR` when `/var/log/aistack` is not writable.
 
 **Acceptance (DoD):**
 
@@ -905,7 +906,7 @@
 
 **Data Contracts:**
 
-* `idle_state.json`: `{ idle_for_s, threshold_s, cpu_idle%, gpu_idle%, gatingReasons:[] }`.
+* `idle_state.json`: `{ idle_for_s, threshold_s, cpu_idle%, gpu_idle%, gatingReasons:[] }` (defaults to `/var/lib/aistack/idle_state.json`, override via `AISTACK_STATE_DIR` for non-root runs).
 
 **Acceptance (DoD):**
 

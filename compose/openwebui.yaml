@@ -1,0 +1,32 @@
+# Open WebUI Service Compose Template
+# Story T-007: Compose-Template: Open WebUI mit Backend-Binding
+
+services:
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: aistack-openwebui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    volumes:
+      - openwebui_data:/app/backend/data
+    networks:
+      - aistack-net
+    environment:
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://aistack-ollama:11434}
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-aistack-secret-change-me}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# Include common definitions
+networks:
+  aistack-net:
+    external: true
+
+volumes:
+  openwebui_data:
+    external: true

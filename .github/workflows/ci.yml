@@ -68,7 +68,7 @@ jobs:
           CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o dist/aistack ./cmd/aistack
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aistack-linux-amd64
           path: dist/aistack
