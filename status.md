@@ -686,3 +686,65 @@
   - ✓ Clean Architecture: Models-Package unabhängig von Services
   - ⏳ TUI-Integration für Model-Auswahl (Story T-022 Optional, nicht implementiert)
   - Hinweis: Ollama-Service muss laufen für Download-Funktionalität; LocalAI-Modelle werden im Volume-Verzeichnis gescannt
+
+## 2025-11-03 21:45 CET — EP-013 Implementation (TUI/CLI UX - Profiles, Navigation, Logs)
+- **Aufgabe:** EP-013 "TUI/CLI UX" vollständig implementieren, inklusive Hauptmenü-Navigation und Keyboard-Shortcuts.
+- **Vorgehen:**
+  - TUI Types implementiert (`internal/tui/types.go`, Story T-024):
+    - `Screen` Enum: Menu, Status, Install, Models, Power, Logs, Diagnostics, Settings, Help
+    - `MenuItem` Struktur: Key, Label, Description, Screen
+    - `UIState` Struktur für Persistierung: CurrentScreen, Selection, LastError, Updated
+    - `DefaultMenuItems()`: 8 Menüpunkte (1-7, ?)
+  - UI State Management (Data Contract EP-013):
+    - `ui_state.json` nach `{menu, selection, last_error, updated}`
+    - StateManager mit atomic writes (temp file + rename)
+    - SaveError/ClearError für Error-Handling
+    - Load mit Default-State-Fallback
+  - Menu-System (`internal/tui/menu.go`):
+    - `renderMenu()`: Hauptmenü mit highlighted Selection
+    - `renderStatusScreen()`: Service-Status (GPU, Idle, Backend)
+    - `renderHelpScreen()`: Keyboard-Shortcuts-Übersicht
+    - `renderPlaceholderScreen()`: Für noch nicht implementierte Features
+    - Navigation: navigateUp/Down mit Wrap-around
+    - Selection: selectMenuItem, selectMenuByKey, returnToMenu
+  - Model erweitert (`internal/tui/model.go`):
+    - Menu-Navigation State: currentScreen, selection, lastError
+    - UIStateManager für Persistierung
+    - Keyboard-Handling: 1-7/?, ↑/↓/j/k, Enter/Space, Esc, q/Ctrl+C
+    - Screen-Routing im View()
+    - Auto-Save bei Screen-Wechsel
+  - Keyboard-Navigation (Story T-024):
+    - **Nummern-Shortcuts**: 1-7, ? für direkte Menu-Auswahl (von jeder Screen)
+    - **Pfeile**: ↑/↓ oder j/k für Menu-Navigation
+    - **Enter/Space**: Select highlighted Menu-Item
+    - **Esc**: Zurück zum Hauptmenü
+    - **q/Ctrl+C**: Quit
+    - **Screen-spezifisch**: 'b' (Backend-Toggle), 'r' (Refresh) auf Status-Screen
+  - Comprehensive Unit Tests:
+    - `state_test.go`: 7 Tests für UIStateManager (Save/Load, SaveError, ClearError, Atomic-Write)
+    - `menu_test.go`: 14 Tests für Navigation und Rendering
+    - DefaultMenuItems, ScreenTypes Tests
+    - Table-driven Tests und tmpDir für Isolation
+  - Testing & Validation:
+    - ✓ `go build ./...`: Erfolgreicher Build
+    - ✓ `go test ./internal/tui/... -v`: Alle 24 TUI-Tests erfolgreich (0.486s)
+    - ✓ `go test ./... -race`: Alle Tests ohne Fehler
+    - ✓ UI State Persistierung verifiziert
+- **Status:** Abgeschlossen — EP-013 Story T-024 implementiert. DoD erfüllt:
+  - ✓ Story T-024: Hauptmenü & Navigation (Nummern/Pfeile/Enter/Space)
+  - ✓ Menüpunkte: Status, Install/Uninstall, Models, Power, Logs, Diagnostics, Settings, Help
+  - ✓ Tastatur-only Navigation (keine Maus nötig)
+  - ✓ Nummern (1-7, ?) für Direktwahl
+  - ✓ Pfeile (↑/↓, j/k) für Fokus-Navigation
+  - ✓ Enter/Space für Bestätigung
+  - ✓ Esc für Zurück zum Menü
+  - ✓ ui_state.json Data Contract implementiert (menu, selection, last_error)
+  - ✓ Error-Anzeige im Statusbereich
+  - ✓ Hilfe-Overlay mit Keyboard-Shortcuts (?)
+  - ✓ Wrap-around Navigation (top ↔ bottom)
+  - ✓ Auto-Save bei Screen-Wechsel
+  - ✓ Unit-Tests mit >80% Coverage-Ziel (24 Tests, 100% Pass-Rate)
+  - ✓ Graceful Error-Handling und State-Persistierung
+  - ✓ Clean Architecture: UI State getrennt von System State
+  - ⏳ Log-Viewer, Profile-Selection (Future Stories, Placeholder-Screens implementiert)
+  - Hinweis: Screens außer Status zeigen Placeholder; Implementierung in zukünftigen Epics

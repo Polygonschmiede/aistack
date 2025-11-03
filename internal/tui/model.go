@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -19,6 +18,7 @@ import (
 )
 
 // Model represents the TUI application state
+// Story T-024: Enhanced with menu system and navigation
 type Model struct {
 	startTime time.Time
 	quitting  bool
@@ -27,6 +27,13 @@ type Model struct {
 	composeDir string
 	stateDir   string
 
+	// UI State
+	currentScreen Screen
+	selection     int
+	lastError     string
+	stateManager  *UIStateManager
+
+	// System State
 	gpuReport    gpu.GPUReport
 	hasGPUReport bool
 	gpuError     string
@@ -43,13 +50,32 @@ type Model struct {
 }
 
 // NewModel creates a new TUI model with preloaded system insights
+// Story T-024: Initializes with main menu screen
 func NewModel(logger *logging.Logger, composeDir string) Model {
-	m := Model{
-		startTime:  time.Now(),
-		logger:     logger,
-		composeDir: composeDir,
+	// Determine state directory
+	stateDir := os.Getenv("AISTACK_STATE_DIR")
+	if stateDir == "" {
+		stateDir = "/var/lib/aistack"
 	}
 
+	m := Model{
+		startTime:     time.Now(),
+		logger:        logger,
+		composeDir:    composeDir,
+		stateDir:      stateDir,
+		currentScreen: ScreenMenu,
+		selection:     0,
+		stateManager:  NewUIStateManager(stateDir, logger),
+	}
+
+	// Load persisted UI state
+	if state, err := m.stateManager.Load(); err == nil {
+		m.currentScreen = state.CurrentScreen
+		m.selection = state.Selection
+		m.lastError = state.LastError
+	}
+
+	// Load system state
 	m.loadIdleState()
 	m.loadBackend()
 	m.loadGPU()
@@ -63,71 +89,107 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update handles messages and updates the model
+// Story T-024: Enhanced with menu navigation
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
+		case "ctrl+c", "q":
 			m.quitting = true
+			m.saveState()
 			return m, tea.Quit
+
+		case "esc":
+			if m.currentScreen != ScreenMenu {
+				m = m.returnToMenu()
+				m.saveState()
+			}
+
+		// Menu navigation (only on menu screen)
+		case "up", "k":
+			if m.currentScreen == ScreenMenu {
+				m = m.navigateUp()
+			}
+
+		case "down", "j":
+			if m.currentScreen == ScreenMenu {
+				m = m.navigateDown()
+			}
+
+		case "enter", " ":
+			if m.currentScreen == ScreenMenu {
+				m = m.selectMenuItem()
+				m.saveState()
+			}
+
+		// Number key shortcuts (work from any screen)
+		case "1", "2", "3", "4", "5", "6", "7", "?":
+			m = m.selectMenuByKey(msg.String())
+			m.saveState()
+
+		// Screen-specific actions
 		case "b":
-			m = m.toggleBackend()
+			if m.currentScreen == ScreenStatus {
+				m = m.toggleBackend()
+			}
+
 		case "r":
-			m = m.refresh()
+			if m.currentScreen == ScreenStatus {
+				m = m.refresh()
+			}
 		}
 	}
 	return m, nil
 }
 
 // View renders the TUI
+// Story T-024: Routes to appropriate screen renderer
 func (m Model) View() string {
 	if m.quitting {
 		return ""
 	}
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00d7ff")).PaddingTop(1)
-	subtitleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#808080"))
-	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffd700")).MarginTop(1)
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87d7af"))
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff"))
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f5f"))
-	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5fafff"))
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#d7d7d7")).MarginTop(1)
-
-	var b strings.Builder
-	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("aistack"))
-	b.WriteString("\n")
-	b.WriteString(subtitleStyle.Render("AI Stack Manager"))
-	b.WriteString("\n")
-	b.WriteString(labelStyle.Render("Uptime: "))
-	b.WriteString(valueStyle.Render(m.prettyDuration(time.Since(m.startTime))))
-	b.WriteString("\n\n")
-
-	b.WriteString(sectionStyle.Render("GPU Readiness"))
-	b.WriteString("\n")
-	b.WriteString(m.renderGPUSection(labelStyle, valueStyle, errorStyle))
-
-	b.WriteString(sectionStyle.Render("Idle Timer"))
-	b.WriteString("\n")
-	b.WriteString(m.renderIdleSection(labelStyle, valueStyle, errorStyle))
-
-	b.WriteString(sectionStyle.Render("Backend Binding"))
-	b.WriteString("\n")
-	b.WriteString(m.renderBackendSection(labelStyle, valueStyle, errorStyle))
-
-	if m.statusMessage != "" {
-		b.WriteString(statusStyle.Render(m.statusMessage))
-		b.WriteString("\n")
+	switch m.currentScreen {
+	case ScreenMenu:
+		return m.renderMenu()
+	case ScreenStatus:
+		return m.renderStatusScreen()
+	case ScreenInstall:
+		return m.renderPlaceholderScreen("Install/Uninstall Services", "Manage service installation and removal.")
+	case ScreenModels:
+		return m.renderPlaceholderScreen("Model Management", "Download, list, and manage AI models.")
+	case ScreenPower:
+		return m.renderPlaceholderScreen("Power Management", "Configure idle detection and auto-suspend.")
+	case ScreenLogs:
+		return m.renderPlaceholderScreen("Service Logs", "View and tail service logs.")
+	case ScreenDiagnostics:
+		return m.renderPlaceholderScreen("Diagnostics", "Run system health checks and diagnostics.")
+	case ScreenSettings:
+		return m.renderPlaceholderScreen("Settings", "Configure aistack settings.")
+	case ScreenHelp:
+		return m.renderHelpScreen()
+	default:
+		return m.renderMenu()
 	}
-
-	b.WriteString("\n")
-	b.WriteString(hintStyle.Render("Press 'b' to toggle backend, 'r' to refresh, 'q' to quit"))
-	b.WriteString("\n")
-
-	return b.String()
 }
 
+// saveState persists the current UI state
+func (m *Model) saveState() {
+	state := &UIState{
+		CurrentScreen: m.currentScreen,
+		Selection:     m.selection,
+		LastError:     m.lastError,
+		Updated:       time.Now().UTC(),
+	}
+
+	if err := m.stateManager.Save(state); err != nil {
+		m.logger.Warn("tui.state.save_failed", "Failed to save UI state", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
+}
+
+// loadGPU loads GPU information
 func (m *Model) loadGPU() {
 	if os.Getenv("AISTACK_DISABLE_GPU_SCAN") == "1" {
 		m.hasGPUReport = false
@@ -153,9 +215,9 @@ func (m *Model) loadGPU() {
 	m.gpuError = ""
 }
 
+// loadIdleState loads idle engine state
 func (m *Model) loadIdleState() {
 	idleConfig := idle.DefaultIdleConfig()
-	m.stateDir = filepath.Dir(idleConfig.StateFilePath)
 	manager := idle.NewStateManager(idleConfig.StateFilePath, m.logger)
 
 	state, err := manager.Load()
@@ -174,16 +236,9 @@ func (m *Model) loadIdleState() {
 	m.idleError = ""
 }
 
+// loadBackend loads backend binding information
 func (m *Model) loadBackend() {
-	stateDir := m.stateDir
-	if stateDir == "" {
-		stateDir = os.Getenv("AISTACK_STATE_DIR")
-		if stateDir == "" {
-			stateDir = "/var/lib/aistack"
-		}
-	}
-
-	manager := services.NewBackendBindingManager(stateDir, m.logger)
+	manager := services.NewBackendBindingManager(m.stateDir, m.logger)
 	binding, err := manager.GetBinding()
 	if err != nil {
 		m.backendError = err.Error()
@@ -197,33 +252,39 @@ func (m *Model) loadBackend() {
 	m.backendError = ""
 }
 
+// toggleBackend toggles the backend between Ollama and LocalAI
 func (m Model) toggleBackend() Model {
 	if m.composeDir == "" {
 		m.statusMessage = "Compose directory not resolved"
+		m.lastError = "Compose directory not resolved"
 		return m
 	}
 
 	manager, err := services.NewManager(m.composeDir, m.logger)
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Backend toggle failed: %v", err)
+		m.lastError = fmt.Sprintf("Backend toggle failed: %v", err)
 		return m
 	}
 
 	service, err := manager.GetService("openwebui")
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Backend toggle failed: %v", err)
+		m.lastError = fmt.Sprintf("Backend toggle failed: %v", err)
 		return m
 	}
 
 	openwebui, ok := service.(*services.OpenWebUIService)
 	if !ok {
 		m.statusMessage = "Backend toggle failed: unexpected service type"
+		m.lastError = "Backend toggle failed: unexpected service type"
 		return m
 	}
 
 	current, err := openwebui.GetCurrentBackend()
 	if err != nil {
 		m.statusMessage = fmt.Sprintf("Backend toggle failed: %v", err)
+		m.lastError = fmt.Sprintf("Backend toggle failed: %v", err)
 		return m
 	}
 
@@ -236,6 +297,7 @@ func (m Model) toggleBackend() Model {
 
 	if err = openwebui.SwitchBackend(target); err != nil {
 		m.statusMessage = fmt.Sprintf("Backend toggle failed: %v", err)
+		m.lastError = fmt.Sprintf("Backend toggle failed: %v", err)
 		return m
 	}
 
@@ -246,18 +308,22 @@ func (m Model) toggleBackend() Model {
 	}
 	m.backendError = ""
 	m.statusMessage = fmt.Sprintf("Switched backend to %s", string(target))
+	m.lastError = "" // Clear error on success
 
 	return m
 }
 
+// refresh refreshes all system state
 func (m Model) refresh() Model {
 	m.loadIdleState()
 	m.loadBackend()
 	m.loadGPU()
 	m.statusMessage = "Refreshed system state"
+	m.lastError = "" // Clear error on refresh
 	return m
 }
 
+// renderGPUSection renders the GPU section
 func (m Model) renderGPUSection(labelStyle, valueStyle, errorStyle lipgloss.Style) string {
 	if m.gpuError != "" {
 		return errorStyle.Render(m.gpuError) + "\n"
@@ -282,6 +348,7 @@ func (m Model) renderGPUSection(labelStyle, valueStyle, errorStyle lipgloss.Styl
 	return b.String()
 }
 
+// renderIdleSection renders the idle section
 func (m Model) renderIdleSection(labelStyle, valueStyle, errorStyle lipgloss.Style) string {
 	if m.idleError != "" {
 		return errorStyle.Render(m.idleError) + "\n"
@@ -316,6 +383,7 @@ func (m Model) renderIdleSection(labelStyle, valueStyle, errorStyle lipgloss.Sty
 	return b.String()
 }
 
+// renderBackendSection renders the backend section
 func (m Model) renderBackendSection(labelStyle, valueStyle, errorStyle lipgloss.Style) string {
 	if m.backendError != "" {
 		return errorStyle.Render(m.backendError) + "\n"
@@ -337,6 +405,7 @@ func (m Model) renderBackendSection(labelStyle, valueStyle, errorStyle lipgloss.
 	return b.String()
 }
 
+// prettyDuration formats a duration for display
 func (m Model) prettyDuration(d time.Duration) string {
 	if d < time.Second {
 		return "<1s"
@@ -344,6 +413,7 @@ func (m Model) prettyDuration(d time.Duration) string {
 	return d.Truncate(time.Second).String()
 }
 
+// capitalize capitalizes the first letter of a string
 func capitalize(input string) string {
 	if input == "" {
 		return ""
