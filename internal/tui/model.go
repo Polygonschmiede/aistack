@@ -838,7 +838,8 @@ func (m Model) toggleSuspend() Model {
 // refreshPowerScreen refreshes the power screen
 func (m Model) refreshPowerScreen() Model {
 	m.loadPowerConfig()
-	m.powerMessage = "Configuration reloaded"
+	m.loadIdleState() // Reload current idle state
+	m.powerMessage = "Configuration and idle state refreshed"
 	return m
 }
 

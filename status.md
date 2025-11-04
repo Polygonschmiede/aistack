@@ -1,5 +1,27 @@
 # Work Status Log
 
+## 2025-11-04 19:30 CET — Force-Mode für Suspend (--ignore-inhibitors)
+- **Aufgabe:** Implement `--ignore-inhibitors` flag für `idle-check` command um systemd inhibit-locks zu umgehen.
+- **Vorgehen:**
+  - Extended `runIdleCheck()` in main.go to parse `--ignore-inhibitors` flag
+  - Modified `agent.IdleCheck()` signature to accept `ignoreInhibitors bool` parameter
+  - Refactored `executor.Execute()` to call new `ExecuteWithOptions(state, ignoreInhibitors)`
+  - Implemented `ExecuteWithOptions()` with conditional inhibitor check skip
+  - When flag is set: Logs "power.inhibit.check.skipped" and bypasses systemd-inhibit check
+  - Updated help text with new flag documentation
+- **Testing:**
+  - Built all packages: `go build ./...` ✓
+  - All tests pass: `go test ./internal/idle/... ./internal/agent/...` ✓
+- **Usage:**
+  ```bash
+  # Normal mode (checks inhibitors)
+  sudo ./dist/aistack idle-check
+
+  # Force mode (ignores GNOME/GDM locks)
+  sudo ./dist/aistack idle-check --ignore-inhibitors
+  ```
+- **Status:** Abgeschlossen — Force-mode implementiert für Testing mit Desktop Environment (GNOME/GDM inhibit-locks).
+
 ## 2025-11-04 10:00 CET — Power Management TUI Screen Implementation
 - **Aufgabe:** Implement Power Management screen to replace placeholder and expose idle/suspend configuration.
 - **Vorgehen:**

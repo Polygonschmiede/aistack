@@ -144,7 +144,14 @@ func runAgent() {
 func runIdleCheck() {
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	if err := agent.IdleCheck(logger); err != nil {
+	// Check for --ignore-inhibitors flag
+	ignoreInhibitors := false
+	if len(os.Args) > 2 && os.Args[2] == "--ignore-inhibitors" {
+		ignoreInhibitors = true
+		logger.Info("idle.check.force_mode", "Ignoring systemd inhibitors", nil)
+	}
+
+	if err := agent.IdleCheck(logger, ignoreInhibitors); err != nil {
 		logger.Error("idle.error", "Idle check error", map[string]interface{}{
 			"error": err.Error(),
 		})
@@ -1454,7 +1461,7 @@ func printUsage() {
 Usage:
   aistack                          Start the interactive TUI (default)
   aistack agent                    Run as background agent service
-  aistack idle-check               Perform idle evaluation (timer-triggered)
+  aistack idle-check [--ignore-inhibitors]  Perform idle evaluation (timer-triggered)
   aistack install --profile <name> Install services from profile (standard-gpu, minimal)
   aistack install <service>        Install a specific service (ollama, openwebui, localai)
   aistack start <service>          Start a service

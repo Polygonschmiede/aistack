@@ -384,6 +384,15 @@ func (m Model) renderPowerScreen() string {
 	b.WriteString(titleStyle.Render("Power Management"))
 	b.WriteString("\n\n")
 
+	// Warning if idle state not available
+	if !m.hasIdleState {
+		warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd700")).Bold(true)
+		b.WriteString(warningStyle.Render("⚠ Agent not running - Auto-suspend inactive"))
+		b.WriteString("\n")
+		b.WriteString(valueStyle.Render("Start agent with: aistack agent"))
+		b.WriteString("\n\n")
+	}
+
 	// Current idle state
 	b.WriteString(sectionStyle.Render("Current Idle State"))
 	b.WriteString("\n")
