@@ -1,5 +1,33 @@
 # Work Status Log
 
+## 2025-11-04 09:00 CET — TUI Feature Screens Implementation
+- **Aufgabe:** Implement functional TUI screens for Install/Uninstall, Logs, and Models to expose existing CLI features.
+- **Vorgehen:**
+  - Extended Model struct with screen-specific state (install, logs, models selections and content)
+  - Implemented keyboard handlers for each screen (navigation, actions)
+  - Created rendering functions in menu.go:
+    - `renderInstallScreen()`: Service selection with install/uninstall operations
+    - `renderLogsScreen()`: Service log viewer with 50-line tail
+    - `renderModelsScreen()`: Provider selection with list/stats display
+  - Connected TUI actions to existing service management functionality:
+    - Install/Uninstall uses services.Manager
+    - Logs uses Service.Logs() method
+    - Models uses simplified state manager wrapper (placeholder for full integration)
+  - Updated View() method to route to new screens instead of placeholders
+  - Added helper methods: getServiceNames(), getProviderNames()
+  - Keyboard shortcuts:
+    - Install screen: i (install), u (uninstall), r (refresh)
+    - Logs screen: Enter/Space (view logs), r (refresh)
+    - Models screen: l (list), s (stats), r (refresh)
+  - All screens support: ↑/↓ navigation, Esc (back to menu), q (quit)
+- **Testing:**
+  - Built all packages: `go build ./...` ✓
+  - All tests pass: `go test ./...` ✓
+  - TUI package: 0.480s ✓
+  - Services package: 32.667s ✓
+  - Models package: 0.359s ✓
+- **Status:** Abgeschlossen — Install/Uninstall, Logs, and Models screens functional and connected to existing CLI features. Power, Diagnostics, and Settings screens remain as placeholders for future implementation.
+
 ## 2025-11-02 12:35 CET — Repository Guidelines Setup
 - **Aufgabe:** `AGENTS.md` als kompakten Contributor-Guide verfassen.
 - **Vorgehen:** Projektstruktur analysiert, bestehende Go-Dateien geprüft und die wichtigsten Build-, Test- und Review-Regeln zusammengefasst.
