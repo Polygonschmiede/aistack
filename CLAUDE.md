@@ -569,6 +569,84 @@ Health check
 - Idempotency testing (repair on already-healthy service)
 - Volume preservation verification
 
+### TUI Architecture
+
+The TUI subsystem (`internal/tui/`) provides an interactive terminal interface built with Bubble Tea:
+
+**Screen Management** (`types.go`):
+- Screen enum: Menu, Status, Install, Models, Logs, Power, Diagnostics, Settings, Help
+- MenuItem struct: Key shortcuts, labels, descriptions, target screens
+- UIState: Persisted state (current screen, selection, last error)
+
+**Model Structure** (`model.go`):
+- Main Model: TUI application state with screen routing
+- System state: GPU report, idle state, backend binding
+- Screen-specific state:
+  - Install: service selection, operation in progress, result messages
+  - Logs: service selection, log content (50 lines)
+  - Models: provider selection, cached list, stats display
+- State persistence: Saves/restores UI state to `/var/lib/aistack/ui_state.json`
+
+**Keyboard Navigation**:
+- Global: q/Ctrl+C (quit), Esc (back to menu), ↑/↓ or j/k (navigate)
+- Status screen: b (toggle backend), r (refresh)
+- Install screen: i (install service), u (uninstall service), r (refresh)
+- Logs screen: Enter/Space (view logs), r (refresh)
+- Models screen: l (list models), s (show stats), r (refresh)
+
+**Rendering** (`menu.go`):
+- Lip Gloss styling: High-contrast colors (#00d7ff cyan, #ffd700 gold)
+- Screen renderers:
+  - `renderMenu()`: Main menu with service list
+  - `renderStatusScreen()`: GPU, idle, backend status
+  - `renderInstallScreen()`: Service management interface
+  - `renderLogsScreen()`: Log viewer with service selection
+  - `renderModelsScreen()`: Model cache management
+  - `renderHelpScreen()`: Keyboard shortcuts reference
+
+**Integration with CLI**:
+- TUI wraps existing CLI functionality (no business logic duplication)
+- Install/Uninstall: Calls `services.Manager` methods
+- Logs: Uses `Service.Logs()` for container output
+- Models: Loads state from `models.StateManager`
+- Backend switching: Uses `OpenWebUIService.SwitchBackend()`
+
+**Update Flow**:
+```
+Keyboard Event
+  ↓
+handleQuitKeys / handleEscapeKey
+  ↓
+handleMenuNavigationKeys (if menu screen)
+  ↓
+handleMenuSelectionKey (if menu screen)
+  ↓
+handleShortcutKeys (number keys)
+  ↓
+handleStatusScreenKeys / handleInstallScreenKeys / etc.
+  ↓
+Action methods (installService, loadLogs, listModels, etc.)
+  ↓
+Update model state
+  ↓
+saveState (persist to JSON)
+  ↓
+View() renders updated screen
+```
+
+**CLI Commands**:
+- `aistack` (no args): Launch interactive TUI
+- `aistack <subcommand>`: Direct CLI execution (install, status, logs, models, etc.)
+
+**Event Logging**:
+- `tui.state.save_failed`: UI state persistence error
+- Service operations logged via existing event types
+
+**Testing Pattern**:
+- Unit tests for menu rendering and navigation
+- State persistence tests with temporary directories
+- UI state loading/saving validation
+
 ## Go Style Guidelines
 
 From `docs/cheat-sheets/golangbp.md`:

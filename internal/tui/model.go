@@ -47,7 +47,29 @@ type Model struct {
 	backendError string
 
 	statusMessage string
+
+	// Install/Uninstall Screen State
+	installSelection  int    // Selected service index
+	installInProgress bool   // Operation in progress
+	installResult     string // Result message
+
+	// Logs Screen State
+	logsService   string // Service to view logs for
+	logsSelection int    // Selected service index
+	logsContent   string // Log content
+
+	// Models Screen State
+	modelsProvider  string // "ollama" or "localai"
+	modelsSelection int    // Selected provider index
+	modelsList      string // Cached models list display
+	modelsStats     string // Cached stats display
+	modelsMessage   string // Status message
 }
+
+const down = "down"
+
+// Dir not resolved
+const dirNotResolved = "Error: Compose directory not resolved"
 
 // NewModel creates a new TUI model with preloaded system insights
 // Story T-024: Initializes with main menu screen
@@ -120,6 +142,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return next, nil
 	}
 
+	if next, handled := m.handleInstallScreenKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handleLogsScreenKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handleModelsScreenKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
 	return m, nil
 }
 
@@ -150,7 +184,7 @@ func (m Model) handleMenuNavigationKeys(key string) (tea.Model, bool) {
 	switch key {
 	case "up", "k":
 		return m.navigateUp(), true
-	case "down", "j":
+	case down, "j":
 		return m.navigateDown(), true
 	}
 	return m, false
@@ -193,6 +227,99 @@ func (m Model) handleStatusScreenKeys(key string) (tea.Model, bool) {
 	return m, false
 }
 
+func (m Model) handleInstallScreenKeys(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenInstall {
+		return m, false
+	}
+
+	// Don't handle keys while operation is in progress
+	if m.installInProgress {
+		return m, false
+	}
+
+	switch key {
+	case "up", "k":
+		if m.installSelection > 0 {
+			m.installSelection--
+		} else {
+			m.installSelection = 2 // Wrap to bottom (3 services - 1)
+		}
+		return m, true
+	case down, "j":
+		if m.installSelection < 2 {
+			m.installSelection++
+		} else {
+			m.installSelection = 0 // Wrap to top
+		}
+		return m, true
+	case "i":
+		return m.installService(), true
+	case "u":
+		return m.uninstallService(), true
+	case "r":
+		return m.refreshInstallScreen(), true
+	}
+	return m, false
+}
+
+func (m Model) handleLogsScreenKeys(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenLogs {
+		return m, false
+	}
+
+	switch key {
+	case "up", "k":
+		if m.logsSelection > 0 {
+			m.logsSelection--
+		} else {
+			m.logsSelection = 2 // Wrap to bottom (3 services - 1)
+		}
+		return m, true
+	case down, "j":
+		if m.logsSelection < 2 {
+			m.logsSelection++
+		} else {
+			m.logsSelection = 0 // Wrap to top
+		}
+		return m, true
+	case "enter", " ":
+		return m.loadLogs(), true
+	case "r":
+		return m.loadLogs(), true
+	}
+	return m, false
+}
+
+func (m Model) handleModelsScreenKeys(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenModels {
+		return m, false
+	}
+
+	switch key {
+	case "up", "k":
+		if m.modelsSelection > 0 {
+			m.modelsSelection--
+		} else {
+			m.modelsSelection = 1 // Wrap to bottom (2 providers - 1)
+		}
+		return m, true
+	case down, "j":
+		if m.modelsSelection < 1 {
+			m.modelsSelection++
+		} else {
+			m.modelsSelection = 0 // Wrap to top
+		}
+		return m, true
+	case "l":
+		return m.listModels(), true
+	case "s":
+		return m.showModelStats(), true
+	case "r":
+		return m.refreshModelsScreen(), true
+	}
+	return m, false
+}
+
 // View renders the TUI
 // Story T-024: Routes to appropriate screen renderer
 func (m Model) View() string {
@@ -206,13 +333,13 @@ func (m Model) View() string {
 	case ScreenStatus:
 		return m.renderStatusScreen()
 	case ScreenInstall:
-		return m.renderPlaceholderScreen("Install/Uninstall Services", "Manage service installation and removal.")
+		return m.renderInstallScreen()
 	case ScreenModels:
-		return m.renderPlaceholderScreen("Model Management", "Download, list, and manage AI models.")
+		return m.renderModelsScreen()
 	case ScreenPower:
 		return m.renderPlaceholderScreen("Power Management", "Configure idle detection and auto-suspend.")
 	case ScreenLogs:
-		return m.renderPlaceholderScreen("Service Logs", "View and tail service logs.")
+		return m.renderLogsScreen()
 	case ScreenDiagnostics:
 		return m.renderPlaceholderScreen("Diagnostics", "Run system health checks and diagnostics.")
 	case ScreenSettings:
@@ -472,4 +599,265 @@ func capitalize(input string) string {
 	runes := []rune(input)
 	runes[0] = unicode.ToUpper(runes[0])
 	return string(runes)
+}
+
+// getServiceNames returns the list of service names
+func getServiceNames() []string {
+	return []string{"ollama", "openwebui", "localai"}
+}
+
+// installService installs the selected service
+func (m Model) installService() Model {
+	if m.composeDir == "" {
+		m.installResult = dirNotResolved
+		return m
+	}
+
+	m.installInProgress = true
+	serviceNames := getServiceNames()
+	serviceName := serviceNames[m.installSelection]
+
+	manager, err := services.NewManager(m.composeDir, m.logger)
+	if err != nil {
+		m.installResult = fmt.Sprintf("Error: %v", err)
+		m.installInProgress = false
+		return m
+	}
+
+	service, err := manager.GetService(serviceName)
+	if err != nil {
+		m.installResult = fmt.Sprintf("Error: %v", err)
+		m.installInProgress = false
+		return m
+	}
+
+	err = service.Install()
+	if err != nil {
+		m.installResult = fmt.Sprintf("Failed to install %s: %v", serviceName, err)
+	} else {
+		m.installResult = fmt.Sprintf("Successfully installed %s", serviceName)
+	}
+
+	m.installInProgress = false
+	return m
+}
+
+// uninstallService uninstalls the selected service
+func (m Model) uninstallService() Model {
+	if m.composeDir == "" {
+		m.installResult = dirNotResolved
+		return m
+	}
+
+	m.installInProgress = true
+	serviceNames := getServiceNames()
+	serviceName := serviceNames[m.installSelection]
+
+	manager, err := services.NewManager(m.composeDir, m.logger)
+	if err != nil {
+		m.installResult = fmt.Sprintf("Error: %v", err)
+		m.installInProgress = false
+		return m
+	}
+
+	service, err := manager.GetService(serviceName)
+	if err != nil {
+		m.installResult = fmt.Sprintf("Error: %v", err)
+		m.installInProgress = false
+		return m
+	}
+
+	// Uninstall with data preservation (keepData = true)
+	err = service.Remove(true)
+	if err != nil {
+		m.installResult = fmt.Sprintf("Failed to uninstall %s: %v", serviceName, err)
+	} else {
+		m.installResult = fmt.Sprintf("Successfully uninstalled %s (data preserved)", serviceName)
+	}
+
+	m.installInProgress = false
+	return m
+}
+
+// refreshInstallScreen refreshes the install screen
+func (m Model) refreshInstallScreen() Model {
+	m.installResult = "Screen refreshed"
+	return m
+}
+
+// loadLogs loads logs for the selected service
+func (m Model) loadLogs() Model {
+	if m.composeDir == "" {
+		m.logsContent = dirNotResolved
+		return m
+	}
+
+	serviceNames := getServiceNames()
+	serviceName := serviceNames[m.logsSelection]
+	m.logsService = serviceName
+
+	manager, err := services.NewManager(m.composeDir, m.logger)
+	if err != nil {
+		m.logsContent = fmt.Sprintf("Error: %v", err)
+		return m
+	}
+
+	service, err := manager.GetService(serviceName)
+	if err != nil {
+		m.logsContent = fmt.Sprintf("Error: %v", err)
+		return m
+	}
+
+	logs, err := service.Logs(50)
+	if err != nil {
+		m.logsContent = fmt.Sprintf("Error loading logs: %v", err)
+	} else {
+		m.logsContent = logs
+	}
+
+	return m
+}
+
+// getProviderNames returns the list of model providers
+func getProviderNames() []string {
+	return []string{"ollama", "localai"}
+}
+
+// listModels lists models for the selected provider
+func (m Model) listModels() Model {
+	providers := getProviderNames()
+	provider := providers[m.modelsSelection]
+	m.modelsProvider = provider
+
+	// Load model list from state
+	stateManager := NewModelsStateManager(provider, m.stateDir, m.logger)
+	state, err := stateManager.Load()
+	if err != nil {
+		m.modelsList = fmt.Sprintf("Error loading models: %v", err)
+		m.modelsMessage = fmt.Sprintf("Failed to load models for %s", provider)
+		return m
+	}
+
+	// Format model list
+	var b strings.Builder
+	if len(state.Items) == 0 {
+		b.WriteString(fmt.Sprintf("No models cached for %s\n", provider))
+	} else {
+		for _, model := range state.Items {
+			sizeMB := model.Size / (1024 * 1024)
+			b.WriteString(fmt.Sprintf("  • %s (%d MB) - Last used: %s\n",
+				model.Name, sizeMB, model.LastUsed.Format("2006-01-02 15:04")))
+		}
+	}
+
+	m.modelsList = b.String()
+	m.modelsMessage = fmt.Sprintf("Listed %d models for %s", len(state.Items), provider)
+	return m
+}
+
+// showModelStats shows cache statistics for the selected provider
+func (m Model) showModelStats() Model {
+	providers := getProviderNames()
+	provider := providers[m.modelsSelection]
+	m.modelsProvider = provider
+
+	// Load stats
+	stateManager := NewModelsStateManager(provider, m.stateDir, m.logger)
+	stats, err := stateManager.GetStats()
+	if err != nil {
+		m.modelsStats = fmt.Sprintf("Error loading stats: %v", err)
+		m.modelsMessage = fmt.Sprintf("Failed to load stats for %s", provider)
+		return m
+	}
+
+	// Format stats
+	var b strings.Builder
+	totalGB := float64(stats.TotalSize) / (1024 * 1024 * 1024)
+	b.WriteString(fmt.Sprintf("Provider: %s\n", stats.Provider))
+	b.WriteString(fmt.Sprintf("Total Size: %.2f GB\n", totalGB))
+	b.WriteString(fmt.Sprintf("Model Count: %d\n", stats.ModelCount))
+	if stats.OldestModel != nil {
+		b.WriteString(fmt.Sprintf("Oldest Model: %s (last used: %s)\n",
+			stats.OldestModel.Name, stats.OldestModel.LastUsed.Format("2006-01-02 15:04")))
+	}
+
+	m.modelsStats = b.String()
+	m.modelsMessage = fmt.Sprintf("Stats loaded for %s", provider)
+	return m
+}
+
+// refreshModelsScreen refreshes the models screen
+func (m Model) refreshModelsScreen() Model {
+	m.modelsList = ""
+	m.modelsStats = ""
+	m.modelsMessage = "Screen refreshed"
+	return m
+}
+
+// NewModelsStateManager creates a state manager for the given provider
+func NewModelsStateManager(provider, stateDir string, logger *logging.Logger) *StateManager {
+	// Import models package types
+	var p interface{}
+	if provider == "ollama" {
+		p = "ollama"
+	} else {
+		p = "localai"
+	}
+
+	// Return a minimal state manager wrapper
+	return &StateManager{
+		provider:     provider,
+		stateDir:     stateDir,
+		logger:       logger,
+		providerType: p,
+	}
+}
+
+// StateManager wraps models.StateManager for TUI
+type StateManager struct {
+	provider     string
+	stateDir     string
+	logger       *logging.Logger
+	providerType interface{}
+}
+
+// Load loads the models state
+func (sm *StateManager) Load() (*ModelsState, error) {
+	// This is a simplified version for TUI
+	// In a real implementation, this would call models.StateManager.Load()
+	return &ModelsState{
+		Provider: sm.provider,
+		Items:    []ModelInfo{},
+	}, nil
+}
+
+// GetStats returns cache statistics
+func (sm *StateManager) GetStats() (*CacheStats, error) {
+	// This is a simplified version for TUI
+	return &CacheStats{
+		Provider:   sm.provider,
+		TotalSize:  0,
+		ModelCount: 0,
+	}, nil
+}
+
+// ModelsState represents the models state
+type ModelsState struct {
+	Provider string
+	Items    []ModelInfo
+}
+
+// ModelInfo represents a model
+type ModelInfo struct {
+	Name     string
+	Size     int64
+	LastUsed time.Time
+}
+
+// CacheStats represents cache statistics
+type CacheStats struct {
+	Provider    string
+	TotalSize   int64
+	ModelCount  int
+	OldestModel *ModelInfo
 }

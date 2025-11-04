@@ -209,3 +209,154 @@ func (m Model) returnToMenu() Model {
 	m.lastError = "" // Clear error when returning to menu
 	return m
 }
+
+// renderInstallScreen renders the install/uninstall screen
+func (m Model) renderInstallScreen() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00d7ff")).MarginBottom(1)
+	serviceItemStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff"))
+	serviceSelectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#00d7ff")).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5fafff")).MarginTop(1)
+	resultStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87d7af")).MarginTop(1)
+	progressStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd700")).MarginTop(1)
+
+	b.WriteString(titleStyle.Render("Install/Uninstall Services"))
+	b.WriteString("\n\n")
+
+	serviceNames := getServiceNames()
+	for i, name := range serviceNames {
+		var itemText string
+		if i == m.installSelection {
+			itemText = serviceSelectedStyle.Render(fmt.Sprintf("> %s", name))
+		} else {
+			itemText = serviceItemStyle.Render(fmt.Sprintf("  %s", name))
+		}
+		b.WriteString(itemText)
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(hintStyle.Render("Navigate: ↑/↓ | Install: i | Uninstall: u | Refresh: r | Back: Esc | Quit: q"))
+	b.WriteString("\n")
+
+	if m.installInProgress {
+		b.WriteString("\n")
+		b.WriteString(progressStyle.Render("Operation in progress..."))
+		b.WriteString("\n")
+	}
+
+	if m.installResult != "" {
+		b.WriteString("\n")
+		b.WriteString(resultStyle.Render(m.installResult))
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// renderLogsScreen renders the logs viewer screen
+func (m Model) renderLogsScreen() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00d7ff")).MarginBottom(1)
+	serviceItemStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff"))
+	serviceSelectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#00d7ff")).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5fafff")).MarginTop(1)
+	logStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).MarginTop(1)
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffd700")).MarginTop(1)
+
+	b.WriteString(titleStyle.Render("Service Logs"))
+	b.WriteString("\n\n")
+
+	// Service selection
+	b.WriteString(sectionStyle.Render("Select Service:"))
+	b.WriteString("\n")
+
+	serviceNames := getServiceNames()
+	for i, name := range serviceNames {
+		var itemText string
+		if i == m.logsSelection {
+			itemText = serviceSelectedStyle.Render(fmt.Sprintf("> %s", name))
+		} else {
+			itemText = serviceItemStyle.Render(fmt.Sprintf("  %s", name))
+		}
+		b.WriteString(itemText)
+		b.WriteString("\n")
+	}
+
+	// Logs display
+	if m.logsContent != "" {
+		b.WriteString("\n")
+		b.WriteString(sectionStyle.Render(fmt.Sprintf("Logs for %s (last 50 lines):", m.logsService)))
+		b.WriteString("\n")
+		b.WriteString(logStyle.Render(m.logsContent))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(hintStyle.Render("Navigate: ↑/↓ | View Logs: Enter/Space | Refresh: r | Back: Esc | Quit: q"))
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+// renderModelsScreen renders the model management screen
+func (m Model) renderModelsScreen() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00d7ff")).MarginBottom(1)
+	providerItemStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff"))
+	providerSelectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#00d7ff")).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5fafff")).MarginTop(1)
+	contentStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).MarginTop(1)
+	messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87d7af")).MarginTop(1)
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffd700")).MarginTop(1)
+
+	b.WriteString(titleStyle.Render("Model Management"))
+	b.WriteString("\n\n")
+
+	// Provider selection
+	b.WriteString(sectionStyle.Render("Select Provider:"))
+	b.WriteString("\n")
+
+	providers := getProviderNames()
+	for i, name := range providers {
+		var itemText string
+		if i == m.modelsSelection {
+			itemText = providerSelectedStyle.Render(fmt.Sprintf("> %s", name))
+		} else {
+			itemText = providerItemStyle.Render(fmt.Sprintf("  %s", name))
+		}
+		b.WriteString(itemText)
+		b.WriteString("\n")
+	}
+
+	// Models list
+	if m.modelsList != "" {
+		b.WriteString("\n")
+		b.WriteString(sectionStyle.Render("Cached Models:"))
+		b.WriteString("\n")
+		b.WriteString(contentStyle.Render(m.modelsList))
+	}
+
+	// Stats
+	if m.modelsStats != "" {
+		b.WriteString("\n")
+		b.WriteString(sectionStyle.Render("Cache Statistics:"))
+		b.WriteString("\n")
+		b.WriteString(contentStyle.Render(m.modelsStats))
+	}
+
+	// Message
+	if m.modelsMessage != "" {
+		b.WriteString("\n")
+		b.WriteString(messageStyle.Render(m.modelsMessage))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(hintStyle.Render("Navigate: ↑/↓ | List: l | Stats: s | Refresh: r | Back: Esc | Quit: q"))
+	b.WriteString("\n")
+
+	return b.String()
+}
