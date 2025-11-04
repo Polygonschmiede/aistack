@@ -593,6 +593,7 @@ The TUI subsystem (`internal/tui/`) provides an interactive terminal interface b
 - Install screen: i (install service), u (uninstall service), r (refresh)
 - Logs screen: Enter/Space (view logs), r (refresh)
 - Models screen: l (list models), s (show stats), r (refresh)
+- Power screen: t (toggle auto-suspend), r (refresh)
 
 **Rendering** (`menu.go`):
 - Lip Gloss styling: High-contrast colors (#00d7ff cyan, #ffd700 gold)
@@ -602,6 +603,7 @@ The TUI subsystem (`internal/tui/`) provides an interactive terminal interface b
   - `renderInstallScreen()`: Service management interface
   - `renderLogsScreen()`: Log viewer with service selection
   - `renderModelsScreen()`: Model cache management
+  - `renderPowerScreen()`: Power management and idle configuration
   - `renderHelpScreen()`: Keyboard shortcuts reference
 
 **Integration with CLI**:
