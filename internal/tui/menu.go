@@ -149,6 +149,15 @@ func (m Model) renderHelpScreen() string {
 	b.WriteString(descStyle.Render("Refresh system state"))
 	b.WriteString("\n")
 
+	b.WriteString(sectionStyle.Render("Power Management"))
+	b.WriteString("\n")
+	b.WriteString(keyStyle.Render("t           "))
+	b.WriteString(descStyle.Render("Toggle auto-suspend"))
+	b.WriteString("\n")
+	b.WriteString(keyStyle.Render("r           "))
+	b.WriteString(descStyle.Render("Refresh configuration"))
+	b.WriteString("\n")
+
 	b.WriteString("\n")
 	b.WriteString(hintStyle.Render("Press Esc to return to menu"))
 	b.WriteString("\n")
@@ -359,4 +368,87 @@ func (m Model) renderModelsScreen() string {
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+// renderPowerScreen renders the power management screen
+func (m Model) renderPowerScreen() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00d7ff")).MarginBottom(1)
+	sectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffd700")).MarginTop(1)
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87d7af"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff"))
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#5fafff")).MarginTop(1)
+	messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#87d7af")).MarginTop(1)
+
+	b.WriteString(titleStyle.Render("Power Management"))
+	b.WriteString("\n\n")
+
+	// Current idle state
+	b.WriteString(sectionStyle.Render("Current Idle State"))
+	b.WriteString("\n")
+	b.WriteString(m.renderIdleSection(labelStyle, valueStyle, lipgloss.NewStyle().Foreground(lipgloss.Color("#ff5f5f"))))
+
+	// Configuration
+	b.WriteString(sectionStyle.Render("Configuration"))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("Window Size: "))
+	b.WriteString(valueStyle.Render(fmt.Sprintf("%ds", m.powerConfig.WindowSeconds)))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("Idle Timeout: "))
+	b.WriteString(valueStyle.Render(fmt.Sprintf("%ds (%s)", m.powerConfig.IdleTimeoutSeconds, formatDuration(m.powerConfig.IdleTimeoutSeconds))))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("CPU Threshold: "))
+	b.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%", m.powerConfig.CPUThresholdPct)))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("GPU Threshold: "))
+	b.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%", m.powerConfig.GPUThresholdPct)))
+	b.WriteString("\n")
+
+	b.WriteString(labelStyle.Render("Min Samples: "))
+	b.WriteString(valueStyle.Render(fmt.Sprintf("%d", m.powerConfig.MinSamplesRequired)))
+	b.WriteString("\n")
+
+	// Suspend toggle
+	suspendStatus := "enabled"
+	suspendIcon := "✓"
+	if !m.powerConfig.EnableSuspend {
+		suspendStatus = "disabled"
+		suspendIcon = "✗"
+	}
+	b.WriteString(labelStyle.Render("Auto-Suspend: "))
+	b.WriteString(valueStyle.Render(fmt.Sprintf("%s %s", suspendIcon, suspendStatus)))
+	b.WriteString("\n")
+
+	// Message
+	if m.powerMessage != "" {
+		b.WriteString("\n")
+		b.WriteString(messageStyle.Render(m.powerMessage))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(hintStyle.Render("Toggle Suspend: t | Refresh: r | Back: Esc | Quit: q"))
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+// formatDuration formats seconds into human-readable duration
+func formatDuration(seconds int) string {
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	if seconds < 3600 {
+		return fmt.Sprintf("%dm", seconds/60)
+	}
+	hours := seconds / 3600
+	mins := (seconds % 3600) / 60
+	if mins == 0 {
+		return fmt.Sprintf("%dh", hours)
+	}
+	return fmt.Sprintf("%dh%dm", hours, mins)
 }

@@ -64,6 +64,10 @@ type Model struct {
 	modelsList      string // Cached models list display
 	modelsStats     string // Cached stats display
 	modelsMessage   string // Status message
+
+	// Power Screen State
+	powerConfig  idle.IdleConfig // Current configuration
+	powerMessage string          // Status message
 }
 
 const down = "down"
@@ -101,6 +105,7 @@ func NewModel(logger *logging.Logger, composeDir string) Model {
 	m.loadIdleState()
 	m.loadBackend()
 	m.loadGPU()
+	m.loadPowerConfig()
 
 	return m
 }
@@ -151,6 +156,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if next, handled := m.handleModelsScreenKeys(keyMsg.String()); handled {
+		return next, nil
+	}
+
+	if next, handled := m.handlePowerScreenKeys(keyMsg.String()); handled {
 		return next, nil
 	}
 
@@ -320,6 +329,20 @@ func (m Model) handleModelsScreenKeys(key string) (tea.Model, bool) {
 	return m, false
 }
 
+func (m Model) handlePowerScreenKeys(key string) (tea.Model, bool) {
+	if m.currentScreen != ScreenPower {
+		return m, false
+	}
+
+	switch key {
+	case "t":
+		return m.toggleSuspend(), true
+	case "r":
+		return m.refreshPowerScreen(), true
+	}
+	return m, false
+}
+
 // View renders the TUI
 // Story T-024: Routes to appropriate screen renderer
 func (m Model) View() string {
@@ -337,7 +360,7 @@ func (m Model) View() string {
 	case ScreenModels:
 		return m.renderModelsScreen()
 	case ScreenPower:
-		return m.renderPlaceholderScreen("Power Management", "Configure idle detection and auto-suspend.")
+		return m.renderPowerScreen()
 	case ScreenLogs:
 		return m.renderLogsScreen()
 	case ScreenDiagnostics:
@@ -791,6 +814,31 @@ func (m Model) refreshModelsScreen() Model {
 	m.modelsList = ""
 	m.modelsStats = ""
 	m.modelsMessage = "Screen refreshed"
+	return m
+}
+
+// loadPowerConfig loads the power/idle configuration
+func (m *Model) loadPowerConfig() {
+	m.powerConfig = idle.DefaultIdleConfig()
+}
+
+// toggleSuspend toggles the suspend enable flag
+func (m Model) toggleSuspend() Model {
+	m.powerConfig.EnableSuspend = !m.powerConfig.EnableSuspend
+
+	status := "disabled"
+	if m.powerConfig.EnableSuspend {
+		status = "enabled"
+	}
+	m.powerMessage = fmt.Sprintf("Auto-suspend %s", status)
+
+	return m
+}
+
+// refreshPowerScreen refreshes the power screen
+func (m Model) refreshPowerScreen() Model {
+	m.loadPowerConfig()
+	m.powerMessage = "Configuration reloaded"
 	return m
 }
 

@@ -1,5 +1,24 @@
 # Work Status Log
 
+## 2025-11-04 10:00 CET — Power Management TUI Screen Implementation
+- **Aufgabe:** Implement Power Management screen to replace placeholder and expose idle/suspend configuration.
+- **Vorgehen:**
+  - Added powerConfig (idle.IdleConfig) and powerMessage to Model state
+  - Implemented loadPowerConfig() method to load default idle configuration
+  - Created handlePowerScreenKeys() with 't' (toggle suspend) and 'r' (refresh) actions
+  - Implemented toggleSuspend() to enable/disable auto-suspend
+  - Created renderPowerScreen() to display:
+    - Current idle state (status, CPU/GPU idle %, gating reasons)
+    - Configuration (window size, idle timeout, CPU/GPU thresholds, min samples)
+    - Auto-suspend toggle with visual indicator (✓/✗)
+  - Added formatDuration() helper to convert seconds to human-readable format (5m, 2h30m)
+  - Updated renderHelpScreen() with Power Management shortcuts
+  - Updated View() routing to use renderPowerScreen() instead of placeholder
+- **Testing:**
+  - Built all packages: `go build ./...` ✓
+  - TUI tests pass: `go test ./internal/tui/...` (0.885s) ✓
+- **Status:** Abgeschlossen — Power Management screen fully functional, showing idle configuration and allowing suspend toggle.
+
 ## 2025-11-04 09:00 CET — TUI Feature Screens Implementation
 - **Aufgabe:** Implement functional TUI screens for Install/Uninstall, Logs, and Models to expose existing CLI features.
 - **Vorgehen:**
