@@ -159,11 +159,13 @@ The idle detection subsystem (`internal/idle/`) provides intelligent system susp
 **Suspend Executor** (`executor.go`):
 - Multi-stage gate checking:
   1. Check gating reasons
-  2. Check systemd-inhibit for active locks
+  2. Check systemd-inhibit for active locks (unless `--ignore-inhibitors`)
   3. Execute `systemctl suspend`
-- Events logged: `power.suspend.requested`, `power.suspend.skipped`, `power.suspend.done`
+- Events logged: `power.suspend.requested`, `power.suspend.skipped`, `power.suspend.done`, `power.inhibit.check.skipped`
 - Dry-run mode for safe testing without actual suspend
 - Inhibitor detection via `systemd-inhibit --list`
+- Force mode: `ExecuteWithOptions(state, ignoreInhibitors=true)` bypasses systemd locks
+- CLI usage: `aistack idle-check --ignore-inhibitors` (useful for testing with Desktop Environment)
 
 **Agent Integration**:
 - Metrics collected every 10s

@@ -282,7 +282,7 @@ func (a *Agent) Shutdown() error {
 }
 
 // IdleCheck performs a single idle evaluation (for timer-triggered runs)
-func IdleCheck(logger *logging.Logger) error {
+func IdleCheck(logger *logging.Logger, ignoreInhibitors bool) error {
 	logger.Info("idle.check_started", "Idle check started", nil)
 
 	// Load idle configuration
@@ -319,7 +319,7 @@ func IdleCheck(logger *logging.Logger) error {
 		})
 
 		// Attempt suspend
-		if err := executor.Execute(&state); err != nil {
+		if err := executor.ExecuteWithOptions(&state, ignoreInhibitors); err != nil {
 			logger.Error("idle.suspend_failed", "Failed to execute suspend", map[string]interface{}{
 				"error": err.Error(),
 			})

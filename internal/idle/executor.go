@@ -24,6 +24,11 @@ func NewExecutor(config IdleConfig, logger *logging.Logger) *Executor {
 
 // Execute attempts to execute suspend with appropriate gate checks
 func (e *Executor) Execute(state *IdleState) error {
+	return e.ExecuteWithOptions(state, false)
+}
+
+// ExecuteWithOptions attempts to execute suspend with optional inhibitor bypass
+func (e *Executor) ExecuteWithOptions(state *IdleState, ignoreInhibitors bool) error {
 	// Check if any other gating reasons exist first (before checking inhibitors)
 	if len(state.GatingReasons) > 0 {
 		e.logger.Info("power.suspend.skipped", "Suspend skipped due to gating reasons", map[string]interface{}{
@@ -42,31 +47,35 @@ func (e *Executor) Execute(state *IdleState) error {
 		return nil
 	}
 
-	// Check for inhibitors
-	hasInhibit, inhibitors, err := e.checkInhibitors()
-	if err != nil {
-		e.logger.Warn("power.inhibit.check.failed", "Failed to check inhibitors", map[string]interface{}{
-			"error": err.Error(),
-		})
-		// Continue anyway - don't block on check failure
-	}
-
-	if hasInhibit {
-		e.logger.Info("power.suspend.skipped", "Suspend skipped due to inhibitors", map[string]interface{}{
-			"idle_for_s": state.IdleForSeconds,
-			"reason":     GatingReasonInhibit,
-			"inhibitors": inhibitors,
-		})
-
-		// Add inhibit to gating reasons
-		if state.GatingReasons == nil {
-			state.GatingReasons = make([]string, 0)
-		}
-		if !containsReason(state.GatingReasons, GatingReasonInhibit) {
-			state.GatingReasons = append(state.GatingReasons, GatingReasonInhibit)
+	// Check for inhibitors (unless explicitly ignored)
+	if !ignoreInhibitors {
+		hasInhibit, inhibitors, err := e.checkInhibitors()
+		if err != nil {
+			e.logger.Warn("power.inhibit.check.failed", "Failed to check inhibitors", map[string]interface{}{
+				"error": err.Error(),
+			})
+			// Continue anyway - don't block on check failure
 		}
 
-		return fmt.Errorf("suspend blocked by inhibitors: %s", strings.Join(inhibitors, ", "))
+		if hasInhibit {
+			e.logger.Info("power.suspend.skipped", "Suspend skipped due to inhibitors", map[string]interface{}{
+				"idle_for_s": state.IdleForSeconds,
+				"reason":     GatingReasonInhibit,
+				"inhibitors": inhibitors,
+			})
+
+			// Add inhibit to gating reasons
+			if state.GatingReasons == nil {
+				state.GatingReasons = make([]string, 0)
+			}
+			if !containsReason(state.GatingReasons, GatingReasonInhibit) {
+				state.GatingReasons = append(state.GatingReasons, GatingReasonInhibit)
+			}
+
+			return fmt.Errorf("suspend blocked by inhibitors: %s", strings.Join(inhibitors, ", "))
+		}
+	} else {
+		e.logger.Info("power.inhibit.check.skipped", "Skipping inhibitor check (force mode)", nil)
 	}
 
 	// All gates passed - request suspend
