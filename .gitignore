@@ -274,3 +274,5 @@ cython_debug/
 
 /.gocache/
 /.golangci-lint-cache/
+/docs/cheat-sheets/16.10.2025.xlsx
+/docs/cheat-sheets/16.10.2025 copy.xlsx

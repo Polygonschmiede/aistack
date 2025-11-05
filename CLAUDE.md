@@ -683,6 +683,80 @@ Health check
 - Idempotency testing (repair on already-healthy service)
 - Volume preservation verification
 
+### Security & Secrets Architecture
+
+The security and secrets subsystem (`internal/secrets/`) provides encrypted storage for sensitive data:
+
+**Encryption** (`crypto.go`):
+- NaCl secretbox (authenticated encryption) from `golang.org/x/crypto/nacl/secretbox`
+- Key derivation: SHA-256 hash of passphrase (32 bytes for secretbox)
+- Nonce: 24 bytes, randomly generated per encryption
+- Encrypted format: nonce (24 bytes) + authenticated ciphertext
+- `DeriveKey(passphrase)`: Derives encryption key from passphrase
+- `Encrypt(plaintext, key)`: Returns nonce + ciphertext
+- `Decrypt(encrypted, key)`: Extracts nonce, verifies & decrypts
+
+**Secret Store** (`store.go`):
+- Encrypted secret storage with automatic passphrase management
+- Storage: `/var/lib/aistack/secrets/*.enc` (file permissions 0600)
+- Passphrase file: `/var/lib/aistack/.passphrase` (permissions 0600)
+- Index file: `/var/lib/aistack/secrets/secrets_index.json` (metadata with last_rotated)
+- `StoreSecret(name, value)`: Encrypts and stores secret with permission verification
+- `RetrieveSecret(name)`: Decrypts and returns secret
+- `DeleteSecret(name)`: Removes secret and updates index
+- `ListSecrets()`: Returns list of stored secret names
+
+**Passphrase Management**:
+- Auto-generation: 64-character hex string (256 bits of entropy)
+- Persistent: Same passphrase reused across store instances
+- Strict permissions: 0600 on passphrase file
+- Location: Configurable via `SecretStoreConfig`
+
+**Secrets Index** (`secrets_index.json`):
+```json
+{
+  "entries": [
+    {
+      "name": "api-key",
+      "last_rotated": "2025-11-05T15:00:00Z"
+    }
+  ]
+}
+```
+
+**File Permissions**:
+- Secrets directory: 0750
+- Secret files (*.enc): 0600
+- Passphrase file: 0600
+- Index file: 0600
+- Automatic verification on store/retrieve
+
+**Security Properties**:
+- Authenticated encryption (NaCl secretbox prevents tampering)
+- Random nonces (same plaintext encrypts to different ciphertext)
+- Key derivation (passphrase → 32-byte key via SHA-256)
+- File permissions enforcement (0600 for all sensitive files)
+- No secrets in memory after operation completes
+
+**Error Handling**:
+- Missing passphrase: Auto-generated on first use
+- Wrong permissions: Warning logged, operation continues
+- Wrong key: Decryption fails with clear error message
+- Corrupted data: Authentication check fails
+- Missing secret: Clear "secret not found" error
+
+**Testing Pattern**:
+- Crypto tests: Encrypt/decrypt round-trip, wrong key, corrupted data, large data
+- Store tests: Store/retrieve, permissions, index updates, persistent passphrase
+- All tests use temporary directories for isolation
+- 16 comprehensive tests covering all failure modes
+
+**Use Cases**:
+- API keys and tokens
+- Database passwords
+- Service credentials
+- Any sensitive configuration data
+
 ### TUI Architecture
 
 The TUI subsystem (`internal/tui/`) provides an interactive terminal interface built with Bubble Tea:
