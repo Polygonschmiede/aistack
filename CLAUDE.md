@@ -396,7 +396,8 @@ Health check
 - Allows mock health checks in tests
 
 **CLI Commands**:
-- `aistack update <service>`: Update with automatic rollback
+- `aistack update <service>`: Update single service with automatic rollback
+- `aistack update-all`: Update all services sequentially with independent rollback
 - `aistack logs <service> [lines]`: View container logs (default: 100 lines)
 
 **Event Logging**:
@@ -408,6 +409,34 @@ Health check
 - `service.update.health_failed`: Health check failed
 - `service.update.rollback`: Rollback initiated
 - `service.update.rollback.success`: Rollback succeeded
+
+**Update-All Feature** (Story T-029):
+- Updates all services sequentially in order: LocalAI → Ollama → Open WebUI
+- Each service update is independent: failure in one service does not affect others
+- `UpdateAllResult` tracks: successful, failed, rolled_back, unchanged counts
+- Per-service results with health status and error messages
+- Exit code 0 if all successful or unchanged, 1 if any failures
+
+**Update-All Workflow**:
+```
+For each service in [localai, ollama, openwebui]:
+  ↓
+Update service (with health-gating and rollback)
+  ├─ Success → Continue to next service
+  ├─ Unchanged → Continue to next service
+  ├─ Rollback → Log warning, continue to next service
+  └─ Failed → Log error, continue to next service
+  ↓
+Display summary (totals + per-service results)
+  ↓
+Exit with status based on overall success
+```
+
+**Testing Pattern**:
+- Mock manager for unit tests
+- Verify correct update order (LocalAI first, OpenWebUI last)
+- Verify independent failure handling (all services attempted)
+- Verify count consistency (total = successful + failed + rolled_back + unchanged)
 
 ### Backend Binding Architecture
 

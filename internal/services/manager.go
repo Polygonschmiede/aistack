@@ -129,3 +129,131 @@ func (m *Manager) StatusAll() ([]ServiceStatus, error) {
 
 	return statuses, nil
 }
+
+// UpdateAllResult represents the result of updating all services
+// Story T-029: Container-Update "all" mit Health-Gate
+type UpdateAllResult struct {
+	TotalServices   int                     `json:"total_services"`
+	SuccessfulCount int                     `json:"successful_count"`
+	FailedCount     int                     `json:"failed_count"`
+	RolledBackCount int                     `json:"rolled_back_count"`
+	UnchangedCount  int                     `json:"unchanged_count"`
+	ServiceResults  map[string]UpdateResult `json:"service_results"`
+}
+
+// UpdateResult represents the result of a single service update
+type UpdateResult struct {
+	Success      bool   `json:"success"`
+	Changed      bool   `json:"changed"`
+	RolledBack   bool   `json:"rolled_back"`
+	Health       string `json:"health"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+// UpdateAllServices updates all services sequentially with health-gating
+// Order: LocalAI → Ollama → Open WebUI (as specified in T-029)
+// Story T-029: Each service is updated independently; failure in one does not affect others
+func (m *Manager) UpdateAllServices() (*UpdateAllResult, error) {
+	m.logger.Info("services.update_all.start", "Starting sequential update of all services", nil)
+
+	result := &UpdateAllResult{
+		TotalServices:  3,
+		ServiceResults: make(map[string]UpdateResult),
+	}
+
+	// Define update order as per T-029: LocalAI → Ollama → Open WebUI
+	updateOrder := []string{"localai", "ollama", "openwebui"}
+
+	for _, serviceName := range updateOrder {
+		service, err := m.GetService(serviceName)
+		if err != nil {
+			m.logger.Error("services.update_all.service_not_found", "Service not found", map[string]interface{}{
+				"service": serviceName,
+				"error":   err.Error(),
+			})
+			result.ServiceResults[serviceName] = UpdateResult{
+				Success:      false,
+				ErrorMessage: err.Error(),
+			}
+			result.FailedCount++
+			continue
+		}
+
+		m.logger.Info("services.update_all.updating", "Updating service", map[string]interface{}{
+			"service": serviceName,
+		})
+
+		// Update service
+		updateErr := service.Update()
+
+		// Get status after update
+		status, statusErr := service.Status()
+		health := "unknown"
+		if statusErr == nil {
+			health = string(status.Health)
+		}
+
+		// Determine result
+		serviceResult := UpdateResult{
+			Health: health,
+		}
+
+		if updateErr != nil {
+			// Check if it was a rollback
+			if updateErr.Error() == "update failed health check, rolled back to previous version" {
+				serviceResult.RolledBack = true
+				serviceResult.Success = false
+				serviceResult.ErrorMessage = updateErr.Error()
+				result.RolledBackCount++
+				m.logger.Warn("services.update_all.rolled_back", "Service update failed and rolled back", map[string]interface{}{
+					"service": serviceName,
+					"error":   updateErr.Error(),
+				})
+			} else {
+				serviceResult.Success = false
+				serviceResult.ErrorMessage = updateErr.Error()
+				result.FailedCount++
+				m.logger.Error("services.update_all.failed", "Service update failed", map[string]interface{}{
+					"service": serviceName,
+					"error":   updateErr.Error(),
+				})
+			}
+		} else {
+			// Check if image actually changed by looking at the update plan
+			stateDir := os.Getenv("AISTACK_STATE_DIR")
+			if stateDir == "" {
+				stateDir = defaultStateDir
+			}
+
+			plan, _ := LoadUpdatePlan(serviceName, stateDir)
+			if plan != nil && plan.HealthAfterSwap == "unchanged" {
+				serviceResult.Success = true
+				serviceResult.Changed = false
+				result.UnchangedCount++
+				m.logger.Info("services.update_all.unchanged", "Service image unchanged", map[string]interface{}{
+					"service": serviceName,
+				})
+			} else {
+				serviceResult.Success = true
+				serviceResult.Changed = true
+				result.SuccessfulCount++
+				m.logger.Info("services.update_all.success", "Service updated successfully", map[string]interface{}{
+					"service": serviceName,
+					"health":  health,
+				})
+			}
+		}
+
+		result.ServiceResults[serviceName] = serviceResult
+	}
+
+	m.logger.Info("services.update_all.complete", "All services update process completed", map[string]interface{}{
+		"total":       result.TotalServices,
+		"successful":  result.SuccessfulCount,
+		"failed":      result.FailedCount,
+		"rolled_back": result.RolledBackCount,
+		"unchanged":   result.UnchangedCount,
+	})
+
+	return result, nil
+}

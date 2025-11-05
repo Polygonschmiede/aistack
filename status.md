@@ -996,3 +996,49 @@
   - ✓ Event-Logging für alle operations
   - ✓ gosec-compliant file permissions (0750/0640)
   - ✓ Comprehensive documentation (CLAUDE.md, CLI help)
+
+## 2025-11-05 08:45 CET — EP-016: Update & Rollback (Binary & Containers)
+- **Aufgabe:** EP-016 Story T-029 implementieren (Container-Update "all" mit Health-Gate)
+- **Durchgeführt:**
+  - **Story T-029: Container-Update "all" mit Health-Gate**
+    - `internal/services/manager.go` erweitert:
+      - `UpdateAllResult`: Result structure mit totals und per-service results
+      - `UpdateResult`: Per-service result (success, changed, rolled_back, health, error)
+      - `UpdateAllServices()`: Sequential update in order LocalAI → Ollama → Open WebUI
+      - Independent failure handling: Failure in one service does not affect others
+      - Load update plans to distinguish "unchanged" vs "successful"
+    - CLI integration (`cmd/aistack/main.go`):
+      - `runUpdateAll()`: CLI handler mit detailed summary output
+      - `getUpdateStatusIcon()`: Visual icons (✓, ○, ⟲, ❌)
+      - `getUpdateStatusText()`: Human-readable status messages
+      - Help text aktualisiert mit `update-all` command
+    - Comprehensive tests (`internal/services/manager_test.go`):
+      - `TestManager_UpdateAllServices`: Basic functionality test
+      - `TestManager_UpdateAllServices_Order`: Verify correct service order
+      - `TestManager_UpdateAllServices_IndependentFailure`: Verify all services attempted
+      - All 3 tests mit temp state directories für isolation
+  - **Tests & Build:**
+    - ✓ `go test ./internal/services/... -run TestManager_UpdateAll`: Alle tests erfolgreich (3 passed)
+    - ✓ `go build ./...`: Erfolgreicher build
+  - **Dokumentation aktualisiert:**
+    - `CLAUDE.md`: "Service Update & Rollback Architecture" Section erweitert
+      - Update-All Feature Details
+      - Update-All Workflow (sequential mit independent failure handling)
+      - Testing Pattern
+      - CLI Commands (update vs update-all)
+      - Exit codes (0 for success/unchanged, 1 for failures)
+    - `status.md`: Dieser Eintrag
+- **Status:** Abgeschlossen — EP-016 Story T-029 implementiert. DoD erfüllt:
+  - ✓ Story T-029: Container-Update "all" mit Health-Gate
+    - Sequential update: LocalAI → Ollama → Open WebUI (correct order verified)
+    - Pull, Health-Check, Swap/Rollback für jeden Service
+    - Independent failure handling: Ein Service fail → nur dieser rollback, andere unbeeinträchtigt
+    - Comprehensive result tracking: successful, failed, rolled_back, unchanged counts
+    - Per-service results mit health status und error messages
+    - User-friendly summary output (icons, totals, per-service details)
+    - Exit code 0 wenn alle successful/unchanged, 1 bei failures
+    - Alle Tests erfolgreich (3 comprehensive tests)
+  - ✓ Clean Code: Klare Trennung Manager / UpdateAllServices
+  - ✓ Event-Logging für alle update-all operations
+  - ✓ Independent service updates (no cascading failures)
+  - ✓ Comprehensive documentation (CLAUDE.md, CLI help)

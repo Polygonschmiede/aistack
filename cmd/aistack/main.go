@@ -56,6 +56,7 @@ func commandHandlers() map[string]func() {
 		"stop":         func() { runServiceCommand("stop") },
 		"status":       runStatus,
 		"update":       func() { runServiceCommand("update") },
+		"update-all":   runUpdateAll,
 		"logs":         func() { runServiceCommand("logs") },
 		"remove":       runRemove,
 		"backend":      runBackendSwitch,
@@ -1080,6 +1081,92 @@ func runWoLRelay() {
 	}
 }
 
+// runUpdateAll updates all services sequentially with health-gating
+// Story T-029: Container-Update "all" mit Health-Gate
+func runUpdateAll() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+
+	fmt.Println("Updating all services (LocalAI → Ollama → Open WebUI)...")
+	fmt.Println()
+
+	// Create service manager
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to initialize service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Run update all
+	result, err := manager.UpdateAllServices()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Update all failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display summary
+	fmt.Println("=== Update Summary ===")
+	fmt.Printf("Total Services: %d\n", result.TotalServices)
+	fmt.Printf("✓ Successful: %d\n", result.SuccessfulCount)
+	fmt.Printf("⚠ Unchanged: %d\n", result.UnchangedCount)
+	fmt.Printf("⟲ Rolled Back: %d\n", result.RolledBackCount)
+	fmt.Printf("❌ Failed: %d\n", result.FailedCount)
+	fmt.Println()
+
+	// Display per-service results
+	fmt.Println("=== Service Results ===")
+	services := []string{"localai", "ollama", "openwebui"}
+	for _, serviceName := range services {
+		if res, exists := result.ServiceResults[serviceName]; exists {
+			icon := getUpdateStatusIcon(res)
+			status := getUpdateStatusText(res)
+			fmt.Printf("%s %s: %s (health: %s)\n", icon, serviceName, status, res.Health)
+			if res.ErrorMessage != "" && !res.Success {
+				fmt.Printf("  Error: %s\n", res.ErrorMessage)
+			}
+		}
+	}
+	fmt.Println()
+
+	// Exit with appropriate code
+	if result.FailedCount > 0 {
+		fmt.Println("⚠ Some services failed to update. Check logs for details.")
+		os.Exit(1)
+	}
+
+	if result.SuccessfulCount > 0 {
+		fmt.Println("✓ All services updated successfully")
+	} else if result.UnchangedCount == result.TotalServices {
+		fmt.Println("✓ All services are up to date (no changes)")
+	}
+}
+
+func getUpdateStatusIcon(res services.UpdateResult) string {
+	if res.Success {
+		if res.Changed {
+			return "✓"
+		}
+		return "○"
+	}
+	if res.RolledBack {
+		return "⟲"
+	}
+	return "❌"
+}
+
+func getUpdateStatusText(res services.UpdateResult) string {
+	if res.Success {
+		if res.Changed {
+			return "updated successfully"
+		}
+		return "unchanged (no update needed)"
+	}
+	if res.RolledBack {
+		return "rolled back (health check failed)"
+	}
+	return "failed"
+}
+
 // runBackendSwitch handles backend switching for Open WebUI
 // Story T-019: Backend-Switch (Ollama ↔ LocalAI)
 func runBackendSwitch() {
@@ -1532,6 +1619,7 @@ Usage:
   aistack start <service>          Start a service
   aistack stop <service>           Stop a service
   aistack update <service>         Update a service to latest version (with rollback)
+  aistack update-all               Update all services sequentially (LocalAI → Ollama → OpenWebUI)
   aistack logs <service> [lines]   Show service logs (default: 100 lines)
   aistack remove <service> [--purge] Remove a service (keeps data by default)
   aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
