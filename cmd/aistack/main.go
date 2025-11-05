@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aistack/internal/agent"
+	"aistack/internal/diag"
 	"aistack/internal/gpu"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
@@ -69,6 +70,7 @@ func commandHandlers() map[string]func() {
 		"models":       runModels,
 		"health":       runHealth,
 		"repair":       func() { runServiceCommand("repair") },
+		"diag":         runDiag,
 		"version":      runVersion,
 		"help":         printUsage,
 		"--help":       printUsage,
@@ -503,6 +505,69 @@ func getHealthIcon(health services.HealthStatus) string {
 	default:
 		return "?"
 	}
+}
+
+// runDiag creates a diagnostic package
+// Story T-028: Diagnosepaket/ZIP mit Redaction
+func runDiag() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	// Create default config
+	config := diag.NewDiagConfig(version)
+
+	// Parse command line options for custom paths
+	if len(os.Args) > 2 {
+		for i := 2; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--output" && i+1 < len(os.Args) {
+				config.OutputPath = os.Args[i+1]
+				i++
+			} else if arg == "--no-logs" {
+				config.IncludeLogs = false
+			} else if arg == "--no-config" {
+				config.IncludeConfig = false
+			}
+		}
+	}
+
+	fmt.Println("Creating diagnostic package...")
+	fmt.Printf("  Version: %s\n", config.Version)
+	fmt.Printf("  Logs: %v\n", config.IncludeLogs)
+	fmt.Printf("  Config: %v\n", config.IncludeConfig)
+	fmt.Println()
+
+	// Create packager and generate package
+	packager := diag.NewPackager(config, logger)
+	zipPath, err := packager.CreatePackage()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to create diagnostic package: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Get file size
+	fileInfo, err := os.Stat(zipPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Package created but failed to get file info: %v\n", err)
+		fmt.Printf("✓ Diagnostic package created: %s\n", zipPath)
+		return
+	}
+
+	fmt.Printf("✓ Diagnostic package created successfully\n")
+	fmt.Printf("  Path: %s\n", zipPath)
+	fmt.Printf("  Size: %s\n", formatBytes(fileInfo.Size()))
+	fmt.Println()
+	fmt.Println("The package contains:")
+	fmt.Println("  • System information and version details")
+	if config.IncludeLogs {
+		fmt.Println("  • Application logs (from /var/log/aistack)")
+	}
+	if config.IncludeConfig {
+		fmt.Println("  • Configuration files (secrets redacted)")
+	}
+	fmt.Println("  • Manifest with file checksums (diag_manifest.json)")
+	fmt.Println()
+	fmt.Println("You can share this package for troubleshooting.")
+	fmt.Println("All sensitive data has been redacted.")
 }
 
 // runGPUCheck performs GPU detection and displays results
@@ -1482,6 +1547,7 @@ Usage:
   aistack wol-apply [interface]    Reapply persisted WoL configuration (for udev/systemd)
   aistack wol-relay [flags]        Start HTTP→WoL relay (use --key or AISTACK_WOL_RELAY_KEY)
   aistack models <subcommand>      Model management (list, download, delete, stats, evict-oldest)
+  aistack diag [--output path] [--no-logs] [--no-config]  Create diagnostic package (ZIP with logs, config, manifest)
   aistack version                  Print version information
   aistack help                     Show this help message
 

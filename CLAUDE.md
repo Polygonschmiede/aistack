@@ -120,6 +120,89 @@ The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for 
 - Table-driven tests for various hardware availability scenarios
 - Graceful degradation verified on macOS (no `/proc/stat`, RAPL, NVML)
 
+### Logging & Diagnostics Architecture
+
+The logging and diagnostics subsystem (`internal/logging/` and `internal/diag/`) provides structured event logging and diagnostic package creation:
+
+**Logging** (`internal/logging/`):
+- Structured JSON format with ISO-8601 timestamps
+- Level-based filtering: debug, info, warn, error
+- Dual output modes: stderr (default) and file-based logging
+- `NewLogger(minLevel)`: Creates stderr-based logger
+- `NewFileLogger(minLevel, logPath)`: Creates file-based logger with automatic directory creation
+- File permissions: 0750 for directories, 0640 for files (gosec compliant)
+- Thread-safe with configurable output writers
+- Event structure: `{"ts": "2025-11-05T...", "level": "info", "type": "event.type", "message": "...", "payload": {...}}`
+
+**Log Rotation** (`assets/logrotate/aistack`):
+- Size-based rotation: 100M for general logs, 500M for metrics
+- Daily rotation with retention: 7 days (general), 30 days (metrics)
+- Compression with `delaycompress`
+- Post-rotation hook: `systemctl reload aistack-agent.service`
+- Graceful handling: `missingok`, `notifempty`, `minsize`
+
+**Diagnostics** (`internal/diag/`):
+- `aistack diag`: Creates ZIP package with redacted secrets
+- Components:
+  - `redactor.go`: Secret redaction with regex patterns (API keys, tokens, passwords, env vars, connection strings)
+  - `collector.go`: Gathers logs, config, system info
+  - `packager.go`: Creates ZIP with manifest and SHA256 checksums
+  - `types.go`: Manifest format and configuration
+
+**Diagnostic Package Structure**:
+```
+aistack-diag-YYYYMMDD-HHMMSS.zip
+├── logs/
+│   ├── agent.log
+│   └── metrics.log
+├── config/
+│   └── config.yaml (secrets redacted)
+├── system_info.json (hostname, version, timestamp)
+└── diag_manifest.json (file list with SHA256 checksums)
+```
+
+**Manifest Format**:
+```json
+{
+  "timestamp": "2025-11-05T...",
+  "host": "ai-server-01",
+  "aistack_version": "0.1.0-dev",
+  "files": [
+    {
+      "path": "logs/agent.log",
+      "size_bytes": 102400,
+      "sha256": "abc123..."
+    }
+  ]
+}
+```
+
+**Secret Redaction Patterns**:
+- API keys: `api_key: sk-123` → `api_key: [REDACTED]`
+- Environment variables: `export API_KEY=xyz` → `export API_KEY=[REDACTED]`
+- Bearer tokens: `Authorization: Bearer xyz` → `Authorization: Bearer [REDACTED]`
+- Database URLs: `postgres://user:pass@host` → `postgres://user:[REDACTED]@host`
+
+**CLI Commands**:
+- `aistack diag`: Create diagnostic package (default path: `aistack-diag-<timestamp>.zip`)
+- `aistack diag --output /path/to/diag.zip`: Custom output path
+- `aistack diag --no-logs`: Exclude log files
+- `aistack diag --no-config`: Exclude configuration
+
+**Event Logging**:
+- `diag.collect.logs.complete`: Log collection finished (file count)
+- `diag.collect.config.complete`: Config collection with redaction
+- `diag.collect.sysinfo.complete`: System info gathered
+- `diag.package.start`: Diagnostic package creation started
+- `diag.package.complete`: Package created (file count, output path)
+- `diag.package.*.error`: Collection/packaging errors (graceful degradation)
+
+**Testing Pattern**:
+- Redactor tests: Verify all secret patterns are detected and redacted
+- Collector tests: Verify artifact gathering with missing files/directories
+- Packager tests: End-to-end ZIP creation with manifest validation
+- All tests use temporary directories for isolation
+
 ### Idle Engine & Autosuspend Architecture
 
 The idle detection subsystem (`internal/idle/`) provides intelligent system suspend based on CPU/GPU activity:

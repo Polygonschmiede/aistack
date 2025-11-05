@@ -177,3 +177,187 @@ func TestLogger_LevelFiltering(t *testing.T) {
 		t.Errorf("Expected no output for filtered log, got: %s", output)
 	}
 }
+
+// Story T-027: File-based logging tests
+func TestNewFileLogger(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "aistack-log-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logPath := tmpDir + "/test.log"
+	logger, err := NewFileLogger(LevelInfo, logPath)
+	if err != nil {
+		t.Fatalf("Failed to create file logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Verify file exists
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		t.Error("Log file was not created")
+	}
+}
+
+func TestNewFileLogger_CreatesDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "aistack-log-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use nested directory that doesn't exist
+	logPath := tmpDir + "/logs/app/test.log"
+	logger, err := NewFileLogger(LevelInfo, logPath)
+	if err != nil {
+		t.Fatalf("Failed to create file logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Verify file exists
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		t.Error("Log file was not created")
+	}
+}
+
+func TestFileLogger_WritesJSON(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "aistack-log-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logPath := tmpDir + "/test.log"
+	logger, err := NewFileLogger(LevelInfo, logPath)
+	if err != nil {
+		t.Fatalf("Failed to create file logger: %v", err)
+	}
+
+	// Write log event
+	logger.Info("test.event", "Test message", map[string]interface{}{
+		"key": "value",
+	})
+
+	// Close to flush
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Failed to close logger: %v", err)
+	}
+
+	// Read log file
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Verify JSON format
+	var event Event
+	if err := json.Unmarshal(content, &event); err != nil {
+		t.Fatalf("Log content is not valid JSON: %v", err)
+	}
+
+	// Verify fields
+	if event.Level != LevelInfo {
+		t.Errorf("Expected level %s, got %s", LevelInfo, event.Level)
+	}
+	if event.Type != "test.event" {
+		t.Errorf("Expected type 'test.event', got %s", event.Type)
+	}
+	if event.Message != "Test message" {
+		t.Errorf("Expected message 'Test message', got %s", event.Message)
+	}
+}
+
+func TestFileLogger_LevelFiltering(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "aistack-log-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logPath := tmpDir + "/test.log"
+	logger, err := NewFileLogger(LevelWarn, logPath)
+	if err != nil {
+		t.Fatalf("Failed to create file logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Write events at different levels
+	logger.Debug("test.debug", "Debug message", nil)
+	logger.Info("test.info", "Info message", nil)
+	logger.Warn("test.warn", "Warn message", nil)
+	logger.Error("test.error", "Error message", nil)
+
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Failed to close logger: %v", err)
+	}
+
+	// Read log file
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Debug and Info should be filtered out
+	if strings.Contains(contentStr, "test.debug") {
+		t.Error("Debug event was logged despite LevelWarn filter")
+	}
+	if strings.Contains(contentStr, "test.info") {
+		t.Error("Info event was logged despite LevelWarn filter")
+	}
+
+	// Warn and Error should be present
+	if !strings.Contains(contentStr, "test.warn") {
+		t.Error("Warn event was not logged")
+	}
+	if !strings.Contains(contentStr, "test.error") {
+		t.Error("Error event was not logged")
+	}
+}
+
+func TestFileLogger_Append(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "aistack-log-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	logPath := tmpDir + "/test.log"
+
+	// Create first logger and write event
+	logger1, err := NewFileLogger(LevelInfo, logPath)
+	if err != nil {
+		t.Fatalf("Failed to create file logger: %v", err)
+	}
+	logger1.Info("test.first", "First message", nil)
+	if err := logger1.Close(); err != nil {
+		t.Fatalf("Failed to close logger: %v", err)
+	}
+
+	// Create second logger and write event
+	logger2, err := NewFileLogger(LevelInfo, logPath)
+	if err != nil {
+		t.Fatalf("Failed to create file logger: %v", err)
+	}
+	logger2.Info("test.second", "Second message", nil)
+	if err := logger2.Close(); err != nil {
+		t.Fatalf("Failed to close logger: %v", err)
+	}
+
+	// Read log file
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Both events should be present
+	if !strings.Contains(contentStr, "test.first") {
+		t.Error("First event was not found")
+	}
+	if !strings.Contains(contentStr, "test.second") {
+		t.Error("Second event was not appended")
+	}
+}

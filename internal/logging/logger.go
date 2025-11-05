@@ -3,7 +3,9 @@ package logging
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -31,13 +33,49 @@ type Event struct {
 }
 
 // Logger provides structured logging
+// Story T-027: Extended with file-based output and rotation support
 type Logger struct {
 	minLevel Level
+	output   io.Writer
+	logFile  *os.File
 }
 
-// NewLogger creates a new logger
+// NewLogger creates a new logger writing to stderr
 func NewLogger(minLevel Level) *Logger {
-	return &Logger{minLevel: minLevel}
+	return &Logger{
+		minLevel: minLevel,
+		output:   os.Stderr,
+	}
+}
+
+// NewFileLogger creates a new logger writing to a file
+// Story T-027: File-based logging with automatic directory creation
+func NewFileLogger(minLevel Level, logFilePath string) (*Logger, error) {
+	// Create log directory if it doesn't exist
+	logDir := filepath.Dir(logFilePath)
+	if err := os.MkdirAll(logDir, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	// Open log file (append mode, create if not exists)
+	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0640)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open log file: %w", err)
+	}
+
+	return &Logger{
+		minLevel: minLevel,
+		output:   logFile,
+		logFile:  logFile,
+	}, nil
+}
+
+// Close closes the log file if open
+func (l *Logger) Close() error {
+	if l.logFile != nil {
+		return l.logFile.Close()
+	}
+	return nil
 }
 
 // Log writes a structured log event
@@ -60,7 +98,12 @@ func (l *Logger) Log(level Level, eventType, message string, payload map[string]
 		return
 	}
 
-	fmt.Fprintln(os.Stderr, string(data))
+	output := l.output
+	if output == nil {
+		output = os.Stderr
+	}
+
+	fmt.Fprintln(output, string(data))
 }
 
 // Debug logs a debug-level event
