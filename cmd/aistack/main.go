@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aistack/internal/agent"
+	"aistack/internal/config"
 	"aistack/internal/diag"
 	"aistack/internal/gpu"
 	"aistack/internal/gpulock"
@@ -60,6 +61,7 @@ func commandHandlers() map[string]func() {
 		"logs":         func() { runServiceCommand("logs") },
 		"remove":       runRemove,
 		"backend":      runBackendSwitch,
+		"config":       runConfig,
 		"gpu-check":    runGPUCheck,
 		"gpu-unlock":   runGPUUnlock,
 		"metrics-test": runMetricsTest,
@@ -1246,6 +1248,95 @@ func runBackendSwitch() {
 	fmt.Println("Access it at: http://localhost:3000")
 }
 
+// runConfig performs configuration file validation
+// Story T-031 (EP-018): Configuration management
+func runConfig() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack config <subcommand>\n")
+		fmt.Fprintf(os.Stderr, "Subcommands:\n")
+		fmt.Fprintf(os.Stderr, "  test [path]  Test configuration file for validity\n")
+		os.Exit(1)
+	}
+
+	subcommand := strings.ToLower(os.Args[2])
+
+	switch subcommand {
+	case "test":
+		runConfigTest(logger)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config subcommand: %s\n", subcommand)
+		fmt.Fprintf(os.Stderr, "Valid subcommands: test\n")
+		os.Exit(1)
+	}
+}
+
+// runConfigTest validates configuration file(s)
+func runConfigTest(logger *logging.Logger) {
+	var cfg config.Config
+	var configErr error
+
+	// Check if specific path provided
+	if len(os.Args) > 3 {
+		path := os.Args[3]
+		fmt.Printf("Testing configuration file: %s\n", path)
+		cfg, configErr = config.LoadFrom(path)
+	} else {
+		// Test default system/user merge
+		fmt.Println("Testing configuration (system + user merge):")
+		systemPath := config.SystemConfigPath()
+		userPath := config.UserConfigPath()
+		fmt.Printf("  System config: %s\n", systemPath)
+		if userPath != "" {
+			fmt.Printf("  User config:   %s\n", userPath)
+		}
+		fmt.Println()
+
+		cfg, configErr = config.Load()
+	}
+
+	// Check for errors
+	if configErr != nil {
+		fmt.Fprintf(os.Stderr, "❌ Configuration validation FAILED:\n")
+		fmt.Fprintf(os.Stderr, "   %v\n", configErr)
+
+		logger.Error("config.validation.error", "Configuration validation failed", map[string]interface{}{
+			"error": configErr.Error(),
+		})
+		os.Exit(1)
+	}
+
+	// Display configuration summary
+	fmt.Println("✓ Configuration is VALID")
+	fmt.Println()
+	fmt.Println("Configuration Summary:")
+	fmt.Printf("  Container Runtime:    %s\n", cfg.ContainerRuntime)
+	fmt.Printf("  Profile:              %s\n", cfg.Profile)
+	fmt.Printf("  GPU Lock:             %t\n", cfg.GPULock)
+	fmt.Printf("  CPU Idle Threshold:   %d%%\n", cfg.Idle.CPUIdleThreshold)
+	fmt.Printf("  GPU Idle Threshold:   %d%%\n", cfg.Idle.GPUIdleThreshold)
+	fmt.Printf("  Idle Window:          %ds\n", cfg.Idle.WindowSeconds)
+	fmt.Printf("  Idle Timeout:         %ds\n", cfg.Idle.IdleTimeoutSeconds)
+	fmt.Printf("  Baseline Power:       %.1fW\n", cfg.PowerEstimation.BaselineWatts)
+	fmt.Printf("  Log Level:            %s\n", cfg.Logging.Level)
+	fmt.Printf("  Log Format:           %s\n", cfg.Logging.Format)
+	fmt.Printf("  Keep Cache:           %t\n", cfg.Models.KeepCacheOnUninstall)
+	fmt.Printf("  Updates Mode:         %s\n", cfg.Updates.Mode)
+
+	if cfg.WoL.Interface != "" && cfg.WoL.Interface != "eth0" {
+		fmt.Printf("  WoL Interface:        %s\n", cfg.WoL.Interface)
+	}
+	if cfg.WoL.MAC != "" && cfg.WoL.MAC != "00:00:00:00:00:00" {
+		fmt.Printf("  WoL MAC:              %s\n", cfg.WoL.MAC)
+	}
+
+	logger.Info("config.validation.ok", "Configuration validation passed", map[string]interface{}{
+		"profile": cfg.Profile,
+		"runtime": cfg.ContainerRuntime,
+	})
+}
+
 // runModels handles model management commands
 // Story T-022, T-023: Model management & caching
 func runModels() {
@@ -1626,6 +1717,7 @@ Usage:
   aistack status                   Show status of all services
   aistack health [--save]          Generate comprehensive health report (services + GPU)
   aistack repair <service>         Repair a service (stop → remove → recreate with health check)
+  aistack config test [path]       Test configuration file for validity (defaults to system/user configs)
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack gpu-unlock               Force unlock GPU mutex (recovery)
   aistack metrics-test             Test metrics collection (CPU/GPU)

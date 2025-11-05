@@ -890,18 +890,69 @@ This ensures continuity across sessions and provides a historical record of deve
 
 **Bootstrap**: Headless installation via `install.sh` script
 
-## Configuration Schema
+## Configuration Management Architecture (EP-018)
 
-Key configuration sections (from EP-018):
-- `container_runtime` - Docker/Podman selection
-- `profile` - Minimal/Standard-GPU/Dev
-- `gpu_lock` - Exclusive GPU mutex
+The configuration subsystem (`internal/config/`) provides robust YAML-based configuration with system/user merge and validation:
+
+**Configuration Files**:
+- `/etc/aistack/config.yaml` - System-wide configuration
+- `~/.aistack/config.yaml` - User-specific overrides
+- `config.yaml.example` - Example configuration template
+
+**Merge Strategy**:
+- Priority: defaults → system config → user config
+- User settings override system settings
+- All unspecified values use defaults from `DefaultConfig()`
+
+**Configuration Schema**:
+- `container_runtime` - Docker/Podman selection (default: docker)
+- `profile` - Minimal/Standard-GPU/Dev (default: standard-gpu)
+- `gpu_lock` - Exclusive GPU mutex (default: true)
 - `idle.*` - CPU/GPU thresholds, window, timeout
-- `power_estimation.baseline_watts` - Power calculation baseline
+  - `cpu_idle_threshold` - CPU idle % (default: 10)
+  - `gpu_idle_threshold` - GPU idle % (default: 5)
+  - `window_seconds` - Sliding window (default: 300)
+  - `idle_timeout_seconds` - Suspend timeout (default: 1800)
+- `power_estimation.baseline_watts` - Power calculation baseline (default: 50)
 - `wol.*` - Wake-on-LAN settings
+  - `interface` - Network interface (default: eth0)
+  - `mac` - MAC address
+  - `relay_url` - Optional HTTP relay URL
 - `logging.*` - Level and format
-- `models.keep_cache_on_uninstall` - Cache retention
-- `updates.mode` - Rolling vs. pinned
+  - `level` - debug/info/warn/error (default: info)
+  - `format` - json/text (default: json)
+- `models.keep_cache_on_uninstall` - Cache retention (default: true)
+- `updates.mode` - Rolling vs. pinned (default: rolling)
+
+**Validation** (`validation.go`):
+- Strict schema validation with path-based error reporting
+- Range checks for thresholds (0-100%)
+- Minimum values for timing parameters
+- MAC address format validation
+- Enum validation for runtime/profile/log level/format/update mode
+
+**CLI Commands**:
+- `aistack config test [path]` - Test configuration file for validity
+  - Without path: Tests system + user merge
+  - With path: Tests specific file
+- Exit code 0 if valid, non-zero if validation fails
+
+**Testing Pattern**:
+- Table-driven tests for defaults, validation, and merging
+- Temporary directories for file-based tests
+- 26 comprehensive tests covering all validation rules
+
+**Usage**:
+```bash
+# Test default configuration
+aistack config test
+
+# Test specific file
+aistack config test /path/to/config.yaml
+
+# Test example config
+aistack config test config.yaml.example
+```
 
 ## Important Patterns
 

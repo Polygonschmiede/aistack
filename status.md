@@ -1,5 +1,55 @@
 # Work Status Log
 
+## 2025-11-05 16:00 CET — EP-018 Implementation (Configuration Management)
+- **Aufgabe:** EP-018 "Configuration Management (YAML)" vollständig implementieren mit Story T-031.
+- **Vorgehen:**
+  - Configuration Package erstellt (`internal/config/`):
+    - `types.go`: Vollständige Config-Struktur mit allen Feldern (container_runtime, profile, gpu_lock, idle, power_estimation, wol, logging, models, updates)
+    - `defaults.go`: DefaultConfig() mit allen Standardwerten gemäß config.yaml.example
+    - `validation.go`: Umfassende Validierung mit path-basierten Fehlermeldungen:
+      * Container runtime: docker/podman
+      * Profile: minimal/standard-gpu/dev
+      * Idle thresholds: 0-100%
+      * Timing: window_seconds ≥10, idle_timeout_seconds ≥60
+      * Power: baseline_watts ≥0
+      * Logging: level (debug/info/warn/error), format (json/text)
+      * Updates: mode (rolling/pinned)
+      * WoL: MAC address format validation (XX:XX:XX:XX:XX:XX)
+    - `config.go`: System/User Merge-Logik:
+      * Load(): Lädt und merged /etc/aistack/config.yaml + ~/.aistack/config.yaml
+      * LoadFrom(path): Lädt spezifische Datei
+      * mergeConfig(): Überschreibt nur non-zero Werte
+      * Graceful handling fehlender Dateien (defaults bleiben erhalten)
+  - CLI-Integration (`cmd/aistack/main.go`):
+    - `aistack config test [path]` Command implementiert
+    - runConfig() und runConfigTest() Funktionen
+    - Zeigt configuration summary bei erfolgreicher Validierung
+    - Exit code 0/1 basierend auf Validierungsergebnis
+    - Strukturierte Event-Logs: config.validation.ok/error
+  - Dependencies hinzugefügt:
+    - `gopkg.in/yaml.v3` für YAML-Parsing (go mod tidy)
+  - Comprehensive Unit Tests (`config_test.go`):
+    - 26 Tests mit vollständiger Coverage aller Validierungsregeln
+    - Table-driven Tests für Defaults, Validation, Merge
+    - Temporäre Verzeichnisse für File-based Tests
+    - Tests für: Defaults, valid/invalid configs, YAML parsing, merge logic, error formatting
+  - Dokumentation aktualisiert:
+    - CLAUDE.md: Neue Sektion "Configuration Management Architecture (EP-018)" mit vollständiger Beschreibung
+    - Help-Text: `aistack config test [path]` in printUsage() aufgenommen
+- **Testing:**
+  - ✓ Build erfolgreich: `go build ./...`
+  - ✓ Alle Tests grün: `go test ./internal/config/... -v` (26/26 passed in 0.330s)
+  - ✓ CLI Command funktioniert: `aistack config test config.yaml.example`
+  - ✓ Validation zeigt korrekte Zusammenfassung und Exit-Codes
+  - ✓ Help-Text zeigt config command
+- **Status:** Abgeschlossen — EP-018 Story T-031 implementiert. DoD erfüllt:
+  - ✓ System/User YAML merge funktioniert (defaults → system → user)
+  - ✓ Validierung mit path-basierten Fehlermeldungen
+  - ✓ DefaultConfig() liefert alle dokumentierten Defaults
+  - ✓ `aistack config test` Command verfügbar (Exit 0/≠0)
+  - ✓ Comprehensive Tests (26 Tests, alle Validierungsregeln abgedeckt)
+  - ✓ Dokumentation in CLAUDE.md aktualisiert
+
 ## 2025-11-04 19:30 CET — Force-Mode für Suspend (--ignore-inhibitors)
 - **Aufgabe:** Implement `--ignore-inhibitors` flag für `idle-check` command um systemd inhibit-locks zu umgehen.
 - **Vorgehen:**
