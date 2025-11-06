@@ -588,6 +588,135 @@ Log service.removed event
 - Tests verify volume deletion with keepData=false
 - Graceful degradation on errors (logged warnings, no hard failures)
 
+### Uninstall & Purge Architecture (EP-020)
+
+The uninstall and purge subsystem (`internal/services/purge.go`) provides complete system cleanup with safety mechanisms:
+
+**Uninstall Command**:
+- `aistack uninstall <service> [--purge]`: Alias for `remove` command
+- Consistent terminology for users familiar with package managers
+- Same behavior: Default keeps volumes, `--purge` removes all data
+
+**Purge Manager** (`purge.go`):
+- `PurgeManager`: Orchestrates complete system cleanup
+- `UninstallLog`: Structured log of removal operations (JSON format)
+- `PurgeAll(removeConfigs bool)`: Removes all services, volumes, networks, and optionally configs
+- `VerifyClean()`: Post-purge verification with leftover detection
+- `SaveUninstallLog()`: Persists operation log for audit trail
+
+**Purge Workflow**:
+```
+CLI: aistack purge --all [--remove-configs] [--yes]
+  ↓
+Double Confirmation (unless --yes):
+  ├─ First prompt: Type 'yes' to confirm
+  └─ Second prompt: Type 'PURGE' to confirm
+  ↓
+PurgeAll() execution:
+  ├─ Remove all services (ollama, openwebui, localai)
+  ├─ Remove aistack network
+  ├─ Clean state directory (/var/lib/aistack)
+  │   ├─ Remove all files
+  │   └─ Preserve config.yaml and wol_config.json (unless --remove-configs)
+  └─ Remove configs (/etc/aistack) if --remove-configs
+  ↓
+VerifyClean():
+  ├─ Check for running containers
+  ├─ Check for remaining volumes
+  └─ Check for files in state directory
+  ↓
+SaveUninstallLog():
+  └─ Save to /var/lib/aistack/uninstall_log.json
+  ↓
+Display results:
+  ├─ Removed items count
+  ├─ Errors encountered
+  └─ Leftovers (if any)
+```
+
+**UninstallLog Structure**:
+```json
+{
+  "timestamp": "2025-11-06T10:00:00Z",
+  "target": "all",
+  "keep_cache": false,
+  "removed_items": [
+    "service:ollama",
+    "service:openwebui",
+    "service:localai",
+    "network:aistack-net",
+    "state:ollama_state.json",
+    "state:openwebui_state.json",
+    "configs:/etc/aistack"
+  ],
+  "errors": []
+}
+```
+
+**Safety Mechanisms**:
+- **Double confirmation**: Prevents accidental purge operations
+- **Graceful degradation**: Errors logged but don't stop cleanup process
+- **Config preservation**: By default, keeps user configurations
+- **Post-purge verification**: Detects and reports any leftovers
+- **Audit trail**: Detailed JSON log of all operations
+
+**State Directory Cleanup**:
+- Default location: `/var/lib/aistack` (override with `AISTACK_STATE_DIR`)
+- Files removed by default:
+  - Service state files (JSON)
+  - Health reports
+  - Idle state
+  - Update plans
+  - UI state
+  - Backend binding
+- Files preserved (unless `--remove-configs`):
+  - `config.yaml`: User configuration
+  - `wol_config.json`: Wake-on-LAN settings
+
+**Config Directory Cleanup**:
+- Location: `/etc/aistack` (from `configdir.ConfigDir()`)
+- Only removed with `--remove-configs` flag
+- Safety check: Only removes if path is `/etc/aistack`
+- Prevents accidental removal of non-standard config directories
+
+**Runtime Interface Extensions**:
+- `VolumeExists(name string)`: Check if volume exists
+- `RemoveNetwork(name string)`: Remove Docker/Podman network
+- `IsContainerRunning(name string)`: Check container state
+- Implemented for both DockerRuntime and PodmanRuntime
+
+**CLI Commands**:
+- `aistack uninstall <service> [--purge]`: Remove single service
+- `aistack purge --all`: Remove everything with double confirmation
+- `aistack purge --all --remove-configs`: Remove everything including configs
+- `aistack purge --all --yes`: Skip confirmation prompts (CI/automation)
+
+**Event Logging**:
+- `purge.started`: Purge operation initiated
+- `purge.service`: Service removal in progress
+- `purge.network`: Network removal
+- `purge.state_dir`: State directory cleanup
+- `purge.state_dir.skip`: File skipped (config preservation)
+- `purge.configs`: Config directory removal
+- `purge.completed`: Purge operation finished
+- `purge.verify`: Verification started
+- `purge.log.saved`: Uninstall log saved
+
+**Testing Pattern**:
+- `purge_test.go`: Comprehensive test coverage
+- Tests use temporary directories (via `AISTACK_STATE_DIR`)
+- Table-driven tests for state directory cleanup
+- Verification of config preservation logic
+- Mock implementations for all Runtime methods
+- File permission verification (0640 for logs)
+
+**Use Cases**:
+- **Development**: Clean slate between test runs
+- **CI/CD**: Reset environment state
+- **Troubleshooting**: Complete reinstall
+- **Decommissioning**: Remove all traces of aistack
+- **Disk space recovery**: Remove all cached models and data
+
 ### Health Checks & Repair Architecture
 
 The health check and repair subsystem (`internal/services/health_reporter.go`, `repair.go`) provides comprehensive health monitoring and automated service repair:

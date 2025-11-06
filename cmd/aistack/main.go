@@ -60,6 +60,8 @@ func commandHandlers() map[string]func() {
 		"update-all":   runUpdateAll,
 		"logs":         func() { runServiceCommand("logs") },
 		"remove":       runRemove,
+		"uninstall":    runRemove, // Alias for remove
+		"purge":        runPurge,
 		"backend":      runBackendSwitch,
 		"config":       runConfig,
 		"gpu-check":    runGPUCheck,
@@ -389,6 +391,141 @@ func runRemove() {
 		fmt.Println("  Data volumes were preserved. Use --purge to remove them.")
 	} else {
 		fmt.Println("  All data volumes were purged.")
+	}
+}
+
+// runPurge performs a complete system purge
+func runPurge() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+
+	// Parse flags
+	all := false
+	removeConfigs := false
+	skipConfirm := false
+
+	for i := 2; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--all":
+			all = true
+		case "--remove-configs":
+			removeConfigs = true
+		case "--yes", "-y":
+			skipConfirm = true
+		}
+	}
+
+	if !all {
+		fmt.Fprintf(os.Stderr, "Usage: aistack purge --all [--remove-configs] [--yes]\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Purges all services, volumes, and optionally configuration files.\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		fmt.Fprintf(os.Stderr, "  --all             Remove all services and data (required)\n")
+		fmt.Fprintf(os.Stderr, "  --remove-configs  Also remove /etc/aistack configuration\n")
+		fmt.Fprintf(os.Stderr, "  --yes, -y         Skip confirmation prompts\n")
+		os.Exit(1)
+	}
+
+	// Double confirmation
+	if !skipConfirm {
+		fmt.Println("⚠️  WARNING: This will permanently delete:")
+		fmt.Println("  - All services (Ollama, Open WebUI, LocalAI)")
+		fmt.Println("  - All data volumes (models, conversations, caches)")
+		fmt.Println("  - State directory (/var/lib/aistack)")
+		if removeConfigs {
+			fmt.Println("  - Configuration directory (/etc/aistack)")
+		}
+		fmt.Println()
+		fmt.Print("Type 'yes' to confirm: ")
+
+		var response string
+		if _, err := fmt.Scanln(&response); err != nil {
+			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			os.Exit(1)
+		}
+
+		if response != "yes" {
+			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			os.Exit(1)
+		}
+
+		// Second confirmation for extra safety
+		fmt.Println()
+		fmt.Print("Are you absolutely sure? Type 'PURGE' to proceed: ")
+		if _, err := fmt.Scanln(&response); err != nil {
+			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			os.Exit(1)
+		}
+
+		if response != "PURGE" {
+			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			os.Exit(1)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Starting full system purge...")
+
+	// Initialize manager and purge manager
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	purgeManager := services.NewPurgeManager(manager, logger)
+
+	// Perform purge
+	log, err := purgeManager.PurgeAll(removeConfigs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Purge failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display results
+	fmt.Println()
+	fmt.Printf("Purge completed. Removed %d items:\n", len(log.RemovedItems))
+	for _, item := range log.RemovedItems {
+		fmt.Printf("  - %s\n", item)
+	}
+
+	if len(log.Errors) > 0 {
+		fmt.Println()
+		fmt.Printf("⚠️  Encountered %d errors:\n", len(log.Errors))
+		for _, errMsg := range log.Errors {
+			fmt.Printf("  - %s\n", errMsg)
+		}
+	}
+
+	// Verify system is clean
+	fmt.Println()
+	fmt.Println("Verifying cleanup...")
+	isClean, leftovers := purgeManager.VerifyClean()
+
+	if isClean {
+		fmt.Println("✓ System is clean. All aistack components removed.")
+	} else {
+		fmt.Printf("⚠️  Found %d leftover items:\n", len(leftovers))
+		for _, item := range leftovers {
+			fmt.Printf("  - %s\n", item)
+		}
+	}
+
+	// Save uninstall log
+	logPath := "/tmp/aistack_uninstall_log.json"
+	if err := purgeManager.SaveUninstallLog(log, logPath); err != nil {
+		logger.Warn("purge.log.save_failed", "Failed to save uninstall log", map[string]interface{}{
+			"error": err.Error(),
+		})
+	} else {
+		fmt.Println()
+		fmt.Printf("Uninstall log saved to: %s\n", logPath)
+	}
+
+	// Exit with error if there were problems
+	if len(log.Errors) > 0 || !isClean {
+		os.Exit(1)
 	}
 }
 
@@ -1713,6 +1850,8 @@ Usage:
   aistack update-all               Update all services sequentially (LocalAI → Ollama → OpenWebUI)
   aistack logs <service> [lines]   Show service logs (default: 100 lines)
   aistack remove <service> [--purge] Remove a service (keeps data by default)
+  aistack uninstall <service> [--purge] Alias for remove
+  aistack purge --all [--remove-configs] [--yes] Remove all services and data (requires double confirmation)
   aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
   aistack status                   Show status of all services
   aistack health [--save]          Generate comprehensive health report (services + GPU)

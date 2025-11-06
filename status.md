@@ -1,5 +1,114 @@
 # Work Status Log
 
+## 2025-11-06 12:00 CET — EP-020 Implementation (Uninstall & Purge)
+- **Aufgabe:** EP-020 "Uninstall & Purge" vollständig implementieren mit Story T-033.
+- **Vorgehen:**
+  - Purge Manager erstellt (`internal/services/purge.go`):
+    - `PurgeManager` struct mit stateDir-Konfiguration
+    - `UninstallLog` struct für strukturierte Audit Logs (JSON)
+    - `PurgeAll(removeConfigs bool)`: Komplette System-Bereinigung
+      * Entfernt alle Services (ollama, openwebui, localai)
+      * Entfernt aistack-net Network
+      * Bereinigt /var/lib/aistack (State Directory)
+      * Optional: Entfernt /etc/aistack (Config Directory)
+      * Graceful Degradation: Fehler loggen aber nicht abbrechen
+    - `cleanStateDirectory(log, removeAll)`: State Directory Cleanup
+      * Entfernt alle Dateien standardmäßig
+      * Behält config.yaml und wol_config.json (wenn removeAll=false)
+      * File-by-file Processing mit individuellem Error Handling
+    - `removeConfigs(log)`: Config Directory Removal
+      * Safety Check: Nur /etc/aistack wird entfernt
+      * Warnt bei non-standard Config Directories
+    - `VerifyClean()`: Post-Purge Verification
+      * Prüft auf laufende Container
+      * Prüft auf verbleibende Volumes
+      * Prüft State Directory für Leftovers
+      * Gibt Liste aller Leftovers zurück
+    - `SaveUninstallLog(log, path)`: Audit Log Persistence
+      * JSON Format mit Timestamp, Target, RemovedItems, Errors
+      * File Permissions: 0640
+      * Directory Creation: 0750
+    - `CreateUninstallLogForService()`: Helper für Service-spezifische Logs
+  - Runtime Interface erweitert (`internal/services/runtime.go`):
+    - Neue Methoden für Purge-Operationen:
+      * `VolumeExists(name string) (bool, error)`: Volume-Existenz-Prüfung
+      * `RemoveNetwork(name string) error`: Network-Entfernung
+      * `IsContainerRunning(name string) (bool, error)`: Container-Status-Prüfung
+    - Implementiert für DockerRuntime:
+      * VolumeExists: docker volume inspect
+      * RemoveNetwork: docker network rm
+      * IsContainerRunning: docker inspect + State.Running check
+    - Implementiert für PodmanRuntime:
+      * VolumeExists: podman volume inspect
+      * RemoveNetwork: podman network rm
+      * IsContainerRunning: podman inspect + State.Running check
+  - CLI-Integration (`cmd/aistack/main.go`):
+    - `uninstall` Command: Alias für `remove` (Konsistente Terminologie)
+    - `purge` Command mit Flags:
+      * `--all`: Purge all services, networks, state
+      * `--remove-configs`: Include config directory removal
+      * `--yes`: Skip confirmation prompts (for CI/automation)
+    - Double Confirmation für purge --all:
+      * Erste Bestätigung: Benutzer muss 'yes' eingeben
+      * Zweite Bestätigung: Benutzer muss 'PURGE' eingeben
+      * Beide übersprungen mit --yes Flag
+    - runPurge() Funktion:
+      * Flag Parsing und Validation
+      * Double Confirmation Flow
+      * PurgeAll() Aufruf mit Fehlerbehandlung
+      * Result Display: Removed Items + Errors
+      * VerifyClean() Post-Purge Check
+      * SaveUninstallLog() mit timestamp-basiertem Pfad
+      * Exit Code: 0 bei Erfolg, 1 bei Fehlern
+    - Strukturierte Event-Logs:
+      * purge.started, purge.service, purge.network
+      * purge.state_dir, purge.state_dir.skip
+      * purge.configs, purge.completed
+      * purge.verify, purge.log.saved
+  - MockRuntime erweitert (`internal/services/network_test.go`):
+    - VolumeExists(): Prüft volumes map
+    - RemoveNetwork(): Löscht aus networks map
+    - IsContainerRunning(): Prüft containerStatuses map
+    - Alle Methoden mit proper Error Handling
+  - Comprehensive Unit Tests (`internal/services/purge_test.go`):
+    - TestPurgeManager_PurgeAll: End-to-End Purge Test
+    - TestPurgeManager_CleanStateDirectory: Config Preservation Logic
+      * Test mit removeAll=false (config.yaml bleibt)
+      * Test mit removeAll=true (alles wird entfernt)
+    - TestPurgeManager_VerifyClean: Leftover Detection
+    - TestPurgeManager_SaveUninstallLog: JSON Persistence + Permissions (0640)
+    - TestCreateUninstallLogForService: Log Creation Helper
+    - Alle Tests verwenden AISTACK_STATE_DIR für Isolation
+    - Temporary Directories für jeden Test
+  - Dokumentation aktualisiert:
+    - CLAUDE.md: Neue Sektion "Uninstall & Purge Architecture (EP-020)"
+      * Vollständige Workflow-Beschreibung
+      * UninstallLog JSON Schema
+      * Safety Mechanisms dokumentiert
+      * Runtime Interface Extensions
+      * CLI Commands und Event Logging
+      * Testing Pattern und Use Cases
+    - Help-Text: `purge` Command in printUsage() aufgenommen
+- **Testing:**
+  - ✓ Alle Tests kompilieren (MockRuntime vollständig implementiert)
+  - ✓ go test ./internal/services/... passes (6 purge tests)
+  - ✓ go test ./... passes (all packages)
+  - ✓ Config Preservation Logic verifiziert (config.yaml bleibt bei removeAll=false)
+  - ✓ Double Confirmation Flow implementiert
+  - ✓ Graceful Degradation bei Fehlern
+  - ✓ Post-Purge Verification mit Leftover Detection
+  - ✓ File Permissions (0640 für logs, 0750 für directories)
+- **Status:** Abgeschlossen — EP-020 Story T-033 implementiert. DoD erfüllt:
+  - ✓ `uninstall` als Alias für `remove` verfügbar
+  - ✓ `purge --all` mit Double Confirmation
+  - ✓ Config Preservation by Default (--remove-configs optional)
+  - ✓ Post-Purge Verification mit Leftover Detection
+  - ✓ UninstallLog JSON mit Audit Trail
+  - ✓ Runtime Interface vollständig erweitert (Docker + Podman)
+  - ✓ Comprehensive Tests für alle Purge-Funktionen
+  - ✓ Safety Mechanisms (Confirmation, Graceful Errors, Config Safety)
+  - ✓ Dokumentation vollständig (CLAUDE.md + status.md)
+
 ## 2025-11-05 17:20 CET — EP-019 Implementation (CI/CD Pipeline & Teststrategie)
 - **Aufgabe:** EP-019 "CI/CD (GitHub Actions) & Teststrategie" vollständig implementieren mit Story T-032.
 - **Vorgehen:**

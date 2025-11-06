@@ -97,6 +97,25 @@ func (m *MockRuntime) TagImage(source, target string) error {
 	return nil
 }
 
+func (m *MockRuntime) VolumeExists(name string) (bool, error) {
+	if exists, ok := m.volumes[name]; ok {
+		return exists, nil
+	}
+	return false, nil
+}
+
+func (m *MockRuntime) RemoveNetwork(name string) error {
+	delete(m.networks, name)
+	return nil
+}
+
+func (m *MockRuntime) IsContainerRunning(name string) (bool, error) {
+	if status, ok := m.containerStatuses[name]; ok {
+		return status.State == "running", nil
+	}
+	return false, nil
+}
+
 func TestNetworkManager_EnsureNetwork(t *testing.T) {
 	runtime := NewMockRuntime()
 	logger := logging.NewLogger(logging.LevelInfo)
