@@ -40,8 +40,70 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests
+      - name: Run tests with race detector
         run: go test ./... -v -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Check coverage for core packages
+        run: |
+          # Extract coverage for internal/ packages (core packages)
+          echo "=== Coverage Report for Core Packages (internal/) ==="
+          go tool cover -func=coverage.out | grep "internal/" | tee internal_coverage.txt
+
+          # Calculate average coverage for internal/ packages
+          TOTAL_COVERAGE=$(go tool cover -func=coverage.out | grep "internal/" | awk '{sum+=$3; count++} END {if(count>0) print sum/count; else print 0}' | sed 's/%//')
+          echo ""
+          echo "Average coverage for internal/ packages: ${TOTAL_COVERAGE}%"
+
+          # Check if coverage meets 80% threshold
+          if (( $(echo "$TOTAL_COVERAGE < 80" | bc -l) )); then
+            echo "❌ Coverage ${TOTAL_COVERAGE}% is below 80% threshold for core packages"
+            exit 1
+          else
+            echo "✓ Coverage ${TOTAL_COVERAGE}% meets 80% threshold"
+          fi
+
+      - name: Generate CI report
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          # Generate ci_report.json with job metadata
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+
+          cat > ci_report.json <<EOF
+          {
+            "job": "test",
+            "status": "$JOB_STATUS",
+            "timestamp": "$TIMESTAMP",
+            "coverage": {
+              "total": $COVERAGE,
+              "threshold": 80,
+              "passed": $(if (( $(echo "$COVERAGE >= 80" | bc -l) )); then echo "true"; else echo "false"; fi)
+            },
+            "race_detector": "enabled",
+            "go_version": "1.22"
+          }
+          EOF
+
+          cat ci_report.json
+
+      - name: Upload CI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-report
+          path: ci_report.json
+          retention-days: 90
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            internal_coverage.txt
+          retention-days: 30
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
@@ -49,6 +111,7 @@ jobs:
           files: ./coverage.out
           flags: unittests
           name: codecov-umbrella
+          fail_ci_if_error: false
 
   build:
     name: Build

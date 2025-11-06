@@ -976,14 +976,80 @@ aistack config test config.yaml.example
 
 **Coverage Target**: ≥80% for core packages (`internal/`)
 
-## CI/CD Expectations
+## CI/CD Pipeline (EP-019)
 
-Based on EP-019:
-- GitHub Actions workflow for lint/test/build
-- Race detector enabled
-- Coverage gates enforced
-- Artifact upload for snapshot builds
-- Semantic versioning with conventional commits
+The CI/CD subsystem provides automated testing, building, and releasing with quality gates:
+
+**CI Workflow** (`.github/workflows/ci.yml`):
+- **Lint Job**: golangci-lint with 5m timeout
+- **Test Job**:
+  - Race detector enabled (`-race`)
+  - Coverage gate: ≥80% for `internal/` packages
+  - Coverage report generation with `internal_coverage.txt`
+  - CI report artifact (`ci_report.json`) with job metadata
+  - Codecov integration for coverage tracking
+- **Build Job**:
+  - Static binary build (`CGO_ENABLED=0`)
+  - Artifact upload (30-day retention)
+  - Runs only after lint and test pass
+
+**Release Workflow** (`.github/workflows/release.yml`):
+- Triggered on version tags (`v*.*.*`)
+- Build with version information embedded
+- Checksum generation (SHA256)
+- Automated changelog from git commits
+- GitHub Release creation with:
+  - Binary (`aistack`)
+  - Tarball (`aistack-linux-amd64.tar.gz`)
+  - Checksums for verification
+  - Release report artifact (365-day retention)
+
+**CI Report Format** (`ci_report.json`):
+```json
+{
+  "job": "test",
+  "status": "success",
+  "timestamp": "2025-11-05T17:00:00Z",
+  "coverage": {
+    "total": 85.2,
+    "threshold": 80,
+    "passed": true
+  },
+  "race_detector": "enabled",
+  "go_version": "1.22"
+}
+```
+
+**Coverage Gate Implementation**:
+- Extracts coverage for `internal/` packages only
+- Calculates average coverage across core packages
+- Fails build if below 80% threshold
+- Reports detailed per-file coverage in artifact
+
+**Release Process**:
+1. Create and push version tag: `git tag v1.0.0 && git push origin v1.0.0`
+2. Release workflow automatically:
+   - Builds binary with version embedded
+   - Generates checksums
+   - Creates changelog from commits
+   - Publishes GitHub Release with all artifacts
+
+**Quality Gates**:
+- Linting must pass (golangci-lint)
+- All tests must pass with race detector
+- Core packages must maintain ≥80% coverage
+- Build must succeed on linux/amd64
+
+**Semantic Versioning**:
+- Format: `vMAJOR.MINOR.PATCH`
+- Follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+- Conventional commit messages encouraged
+
+**Artifact Retention**:
+- CI reports: 90 days
+- Coverage reports: 30 days
+- Build artifacts: 30 days
+- Release reports: 365 days
 
 ## Documentation Structure
 
