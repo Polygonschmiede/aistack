@@ -23,6 +23,66 @@ aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI,
 
 ## Quick Start
 
+### Production Installation (Ubuntu 24.04)
+
+**Goal**: Get all services running (green status) in ≤10 minutes.
+
+**Prerequisites**:
+- Fresh Ubuntu 24.04 LTS installation
+- Docker installed (`sudo apt install docker.io docker-compose-v2`)
+- User added to docker group (`sudo usermod -aG docker $USER`, then logout/login)
+- For GPU support: NVIDIA drivers installed (`nvidia-smi` should work)
+
+**Step 1: Download and Install**
+
+```bash
+# Download latest release (replace VERSION with actual version)
+wget https://github.com/yourorg/aistack/releases/download/v0.1.0/aistack-linux-amd64.tar.gz
+
+# Extract
+tar -xzf aistack-linux-amd64.tar.gz
+cd aistack
+
+# Install system-wide (requires sudo)
+sudo ./install.sh
+
+# Verify installation
+aistack version
+```
+
+**Step 2: Install Services**
+
+```bash
+# Install with standard GPU profile (Ollama + Open WebUI + LocalAI)
+sudo aistack install --profile standard-gpu
+
+# OR install minimal profile (Ollama only)
+sudo aistack install --profile minimal
+
+# Check status
+aistack status
+```
+
+**Step 3: Verify Services**
+
+```bash
+# All services should show "green" health
+aistack health
+
+# Access services:
+# - Ollama API: http://localhost:11434
+# - Open WebUI: http://localhost:3000
+# - LocalAI API: http://localhost:8080
+```
+
+**Troubleshooting**:
+- If services show "red": Check `aistack logs <service>` for errors
+- If GPU not detected: Run `aistack gpu-check` to verify NVIDIA stack
+- If network errors: Ensure Docker network is up: `docker network ls | grep aistack`
+- For detailed diagnostics: `aistack diag` (creates ZIP with logs)
+
+See [OPERATIONS.md](docs/OPERATIONS.md) for detailed troubleshooting playbooks.
+
 ### Development Build
 
 ```bash
@@ -33,8 +93,11 @@ cd aistack
 # Build
 make build
 
-# Run
+# Run locally (no installation)
 ./dist/aistack
+
+# Or run with go
+make run
 ```
 
 ### Development Commands
@@ -44,7 +107,6 @@ make help          # Show all available commands
 make build         # Build binary
 make test          # Run tests
 make lint          # Run linters
-make run           # Run directly with go run
 make coverage      # Generate coverage report
 ```
 

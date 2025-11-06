@@ -1,0 +1,99 @@
+# aistack Version Lock File
+# Location: /etc/aistack/versions.lock
+#
+# This file pins service versions for deterministic deployments.
+# Format: service:image[@digest|:tag]
+#
+# Digest format (recommended for production):
+#   service:registry/image@sha256:hash
+#
+# Tag format (easier for development):
+#   service:registry/image:tag
+#
+# When this file exists and updates.mode is "pinned",
+# services will use these exact versions and updates will be blocked.
+
+# ==============================================================================
+# OLLAMA
+# ==============================================================================
+
+# Recommended: Use digest for immutable deployment
+# Check digest with: docker pull ollama/ollama:latest && docker inspect ollama/ollama:latest | jq -r '.[0].RepoDigests[0]'
+ollama:ollama/ollama@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890
+
+# Alternative: Use specific tag
+# ollama:ollama/ollama:0.1.44
+
+
+# ==============================================================================
+# OPEN WEBUI
+# ==============================================================================
+
+# Recommended: Use digest
+openwebui:ghcr.io/open-webui/open-webui@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+
+# Alternative: Use main or specific version tag
+# openwebui:ghcr.io/open-webui/open-webui:main
+# openwebui:ghcr.io/open-webui/open-webui:v0.1.0
+
+
+# ==============================================================================
+# LOCALAI
+# ==============================================================================
+
+# Recommended: Use digest
+localai:quay.io/go-skynet/local-ai@sha256:567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234
+
+# Alternative: Use specific version tag
+# localai:quay.io/go-skynet/local-ai:v2.8.0
+# localai:quay.io/go-skynet/local-ai:latest
+
+
+# ==============================================================================
+# USAGE NOTES
+# ==============================================================================
+
+# 1. Get image digests:
+#    docker pull <image>
+#    docker inspect <image> | jq -r '.[0].RepoDigests[0]'
+#
+# 2. Test version lock:
+#    cp versions.lock.example /etc/aistack/versions.lock
+#    aistack versions  # Should show "ACTIVE"
+#
+# 3. Enable pinned mode in config.yaml:
+#    updates:
+#      mode: pinned
+#
+# 4. Verify blocking:
+#    aistack update ollama  # Should fail with clear message
+#
+# 5. Update to new version:
+#    - Edit this file with new digest/tag
+#    - Restart services: aistack stop <service> && aistack start <service>
+#    - Or set mode to "rolling" and run: aistack update <service>
+
+# ==============================================================================
+# PRODUCTION RECOMMENDATIONS
+# ==============================================================================
+
+# ✓ Use digests (immutable, secure)
+# ✓ Track this file in version control (Git)
+# ✓ Set updates.mode to "pinned" in config.yaml
+# ✓ Test updates in staging before production
+# ✓ Document version change reasons in commit messages
+# ✗ Don't use "latest" tag in production
+# ✗ Don't manually edit running containers
+
+# ==============================================================================
+# ROLLBACK EXAMPLE
+# ==============================================================================
+
+# To rollback to previous version:
+# 1. Find previous digest from Git history or Docker Hub
+# 2. Update digest in this file
+# 3. Restart service:
+#    aistack stop <service>
+#    aistack start <service>
+# 4. Verify health:
+#    aistack health

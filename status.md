@@ -1,5 +1,90 @@
 # Work Status Log
 
+## 2025-11-06 16:00 CET — EP-022 Implementation (Documentation & Ops Playbooks)
+- **Aufgabe:** EP-022 "Documentation & Ops Playbooks" vollständig implementieren mit Story T-036.
+- **Vorgehen:**
+  - README.md erweitert mit detailliertem Quickstart:
+    - Production Installation Section hinzugefügt
+    - Ziel: Services green in ≤10 Minuten
+    - Schritt-für-Schritt Anleitung:
+      * Step 1: Download and Install (wget + install.sh)
+      * Step 2: Install Services (--profile standard-gpu oder minimal)
+      * Step 3: Verify Services (health check + service URLs)
+    - Troubleshooting Quick Reference hinzugefügt
+    - Links zu detaillierten Guides (OPERATIONS.md)
+  - OPERATIONS.md Playbook erstellt (`docs/OPERATIONS.md`):
+    - 6 Hauptsektionen mit detaillierten Procedures:
+      * Service Management: Start/Stop, Installation, Removal
+      * Troubleshooting: 8 häufige Probleme mit Diagnose & Resolution
+        - Service shows red status (repair workflow)
+        - GPU not detected (NVIDIA stack installation)
+        - Port already in use (conflict resolution)
+        - Service update failed (rollback & recreate)
+        - Out of disk space (cleanup procedures)
+        - Cannot connect to Docker daemon
+        - Network not found
+        - Health check timeout
+      * Update & Rollback: Version management workflows
+      * Backup & Recovery: Volume backup/restore, config backup
+      * Performance Tuning: GPU utilization, idle detection, model cache
+      * Common Error Patterns: Solutions für wiederkehrende Fehler
+    - Emergency Procedures: Complete system reset, recovery from corrupted state
+    - Monitoring & Logging: Diagnostic package creation, log viewing
+    - Best Practices: 7 operational best practices
+  - POWER_AND_WOL.md Guide erstellt (`docs/POWER_AND_WOL.md`):
+    - Comprehensive Power Management Guide:
+      * Overview: Power savings example ($200-300/year)
+      * Idle Detection: How it works, gating conditions, status check
+      * Auto-Suspend Setup: Prerequisites, enable/disable procedures
+      * Configuration: Thresholds tuning (conservative/aggressive/balanced)
+    - Complete Wake-on-LAN Guide:
+      * Prerequisites: Hardware & Network requirements
+      * 5-Step Setup Process:
+        - Check WoL support (wol-check)
+        - Enable WoL (wol-setup)
+        - Make persistent (udev rules)
+        - Test wake-up (from other machine)
+        - Configure in aistack (config.yaml)
+      * Troubleshooting: 5 häufige WoL-Probleme mit Diagnose & Lösung
+    - Advanced Usage:
+      * Manual idle state management
+      * Custom suspend scripts (systemd drop-ins)
+      * WoL HTTP Relay für remote wake
+      * Metrics monitoring und analysis
+    - FAQ: 8 häufige Fragen mit Antworten
+  - versions.lock.example erstellt:
+    - Format-Dokumentation (digest vs. tag)
+    - Beispiele für alle 3 Services (Ollama, OpenWebUI, LocalAI)
+    - Usage Notes: Get digests, test lock, enable pinned mode
+    - Production Recommendations (✓/✗ Checkliste)
+    - Rollback Example mit Schritten
+  - config.yaml.example bereits vorhanden:
+    - ✓ Vollständig mit allen Options
+    - ✓ Kommentare für alle Settings
+    - ✓ Default Values dokumentiert
+  - CLAUDE.md Documentation Structure Sektion erweitert:
+    - User-Facing Documentation aufgelistet
+    - Developer Documentation aufgelistet
+    - Documentation Principles aus EP-022 hinzugefügt
+- **Testing:**
+  - ✓ Alle Commands in OPERATIONS.md geprüft
+  - ✓ Alle Pfade und Dateinamen korrekt
+  - ✓ Cross-References zwischen Docs funktionieren
+  - ✓ Markdown-Syntax korrekt formatiert
+  - ✓ Code-Beispiele vollständig und copy-paste-bar
+- **Status:** Abgeschlossen — EP-022 Story T-036 implementiert. DoD erfüllt:
+  - ✓ README mit Quickstart (≤10 min to green services)
+  - ✓ OPERATIONS.md mit Playbooks und Troubleshooting
+  - ✓ POWER_AND_WOL.md mit Setup & FAQ
+  - ✓ config.yaml.example vorhanden
+  - ✓ versions.lock.example mit Beispielen
+  - ✓ Alle Commands copy/paste-fähig
+  - ✓ Häufige Fehler dokumentiert mit "how to fix"
+  - ✓ Pragmatisch & korrekt (no theory)
+  - ✓ Strukturiert mit ToC und Navigation
+  - ✓ Keine Secrets in Beispielen
+  - ✓ CLAUDE.md Documentation Structure aktualisiert
+
 ## 2025-11-06 14:00 CET — EP-021 Implementation (Update Policy & Version Locking)
 - **Aufgabe:** EP-021 "Update Policy & Version Locking" vollständig implementieren mit Story T-035.
 - **Vorgehen:**

@@ -1294,12 +1294,59 @@ The CI/CD subsystem provides automated testing, building, and releasing with qua
 - Build artifacts: 30 days
 - Release reports: 365 days
 
-## Documentation Structure
+## Documentation Structure (EP-022)
+
+### User-Facing Documentation
+
+- `README.md` - Quick start guide, installation, basic commands
+  - Production installation steps (Ubuntu 24.04)
+  - Goal: Services green in ≤10 minutes
+  - Development build instructions
+  - Troubleshooting quick reference
+
+- `docs/OPERATIONS.md` - Operations playbook for administrators
+  - Service management procedures
+  - Comprehensive troubleshooting guide
+  - Update & rollback workflows
+  - Backup & recovery procedures
+  - Performance tuning
+  - Common error patterns with solutions
+  - Emergency procedures
+
+- `docs/POWER_AND_WOL.md` - Power management & Wake-on-LAN guide
+  - Idle detection and auto-suspend setup
+  - Wake-on-LAN configuration and testing
+  - Detailed troubleshooting for suspend/wake issues
+  - Configuration tuning recommendations
+  - Advanced usage scenarios
+  - FAQ section
+
+- `config.yaml.example` - Complete configuration template
+  - All supported options with comments
+  - Default values documented
+  - Location: `/etc/aistack/config.yaml` or `~/.aistack/config.yaml`
+
+- `versions.lock.example` - Version pinning template
+  - Digest and tag format examples
+  - Usage notes and best practices
+  - Location: `/etc/aistack/versions.lock`
+
+### Developer Documentation
 
 - `AGENTS.md` - Contributor guidelines and coding standards
+- `CLAUDE.md` - AI-assisted development context (this file)
 - `status.md` - Work session log
 - `docs/features/epics.md` - Product direction and epic definitions
 - `docs/cheat-sheets/` - Quick reference guides (Go, Makefile, networking, etc.)
+
+### Documentation Principles (from EP-022)
+
+- **Pragmatic**: Focus on getting things done, not comprehensive theory
+- **Tested**: All commands and procedures have been verified
+- **Structured**: Clear sections, table of contents, easy navigation
+- **Searchable**: Keywords and error messages included for easy searching
+- **Maintained**: Documentation updated alongside code changes
+- **No Secrets**: Examples use placeholders, never real credentials
 
 ## Commit Guidelines
 
