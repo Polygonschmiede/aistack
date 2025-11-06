@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"aistack/internal/config"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 )
@@ -153,7 +154,13 @@ type UpdateResult struct {
 // UpdateAllServices updates all services sequentially with health-gating
 // Order: LocalAI → Ollama → Open WebUI (as specified in T-029)
 // Story T-029: Each service is updated independently; failure in one does not affect others
+// Story T-035: Enforces update policy (pinned vs rolling mode)
 func (m *Manager) UpdateAllServices() (*UpdateAllResult, error) {
+	// Check update policy before proceeding
+	if err := m.checkUpdatePolicy(); err != nil {
+		return nil, err
+	}
+
 	m.logger.Info("services.update_all.start", "Starting sequential update of all services", nil)
 
 	result := &UpdateAllResult{
@@ -256,4 +263,31 @@ func (m *Manager) UpdateAllServices() (*UpdateAllResult, error) {
 	})
 
 	return result, nil
+}
+
+// checkUpdatePolicy checks if updates are allowed based on configuration
+// Returns error if updates.mode is "pinned" and updates are blocked
+// Story T-035: Enforce update policy based on configuration
+func (m *Manager) checkUpdatePolicy() error {
+	cfg, err := config.Load()
+	if err != nil {
+		// If config can't be loaded, allow updates (fail open for backwards compatibility)
+		m.logger.Warn("update.policy.check.failed", "Failed to load config, allowing updates", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return nil
+	}
+
+	// Check if updates are pinned
+	if cfg.Updates.Mode == "pinned" {
+		m.logger.Info("update.policy.blocked", "Updates blocked by policy", map[string]interface{}{
+			"mode": cfg.Updates.Mode,
+		})
+		return fmt.Errorf("updates are disabled: updates.mode is set to 'pinned' (change to 'rolling' in config to allow updates)")
+	}
+
+	m.logger.Debug("update.policy.allowed", "Updates allowed by policy", map[string]interface{}{
+		"mode": cfg.Updates.Mode,
+	})
+	return nil
 }

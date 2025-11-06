@@ -1,5 +1,81 @@
 # Work Status Log
 
+## 2025-11-06 14:00 CET — EP-021 Implementation (Update Policy & Version Locking)
+- **Aufgabe:** EP-021 "Update Policy & Version Locking" vollständig implementieren mit Story T-035.
+- **Vorgehen:**
+  - Existing Implementation Review:
+    - ✓ `versions.go` bereits vorhanden mit VersionLock struct
+    - ✓ `loadVersionLock()` Parser bereits implementiert
+    - ✓ Integration in ServiceUpdater bereits vorhanden
+    - ✓ Manager lädt VersionLock beim Startup
+    - ✓ Config-Struktur hat bereits `UpdatesConfig.Mode`
+    - ✓ Validation für updates.mode bereits vorhanden
+  - Update Policy Enforcement implementiert:
+    - `Manager.checkUpdatePolicy()`: Config-basierte Policy-Prüfung
+      * Lädt Config via `config.Load()`
+      * Prüft `updates.mode` (rolling/pinned)
+      * Blockiert Updates wenn mode=pinned
+      * Fail-open bei Config-Load-Fehler (backwards compatibility)
+    - Integration in `UpdateAllServices()`: Policy-Check vor Update-Loop
+    - Integration in `handleServiceUpdate()`: Policy-Check in CLI
+    - Clear Error Messages: "updates are disabled: updates.mode is set to 'pinned'"
+  - Comprehensive Tests erstellt (`versions_test.go`):
+    - 13 Test Functions mit vollständiger Coverage
+    - `TestVersionLock_Resolve_*`: Nil lock, tags, digests, fallbacks, empty entries
+    - `TestLoadVersionLock_*`: Valid file, invalid formats, empty file, comments
+    - `TestFileExists`: Helper function validation
+    - Table-driven Tests für Invalid Format Cases:
+      * Missing colon separator
+      * Empty service name
+      * Empty reference
+      * Empty reference with spaces
+    - Alle Tests mit temporary directories für Isolation
+    - Tests verwenden `AISTACK_VERSIONS_LOCK` env variable
+  - CLI Command hinzugefügt (`aistack versions`):
+    - Zeigt Update Mode (rolling/pinned) mit Status
+    - Zeigt Version Lock Status (ACTIVE/NOT FOUND)
+    - Zeigt Location von versions.lock wenn gefunden
+    - Listet alle Locked Services mit Image References
+    - Helper Functions:
+      * `locateVersionsLockFile()`: File location resolution
+      * `displayVersionLockContents()`: Lock file content display
+    - User-friendly Output mit Status-Symbolen (✓, ⚠)
+    - Help-Text in printUsage() hinzugefügt
+  - Import hinzugefügt:
+    - `internal/config` Import in manager.go für Policy-Check
+    - `io` Import in main.go für File-Reading
+  - Dokumentation aktualisiert:
+    - CLAUDE.md: Neue Sektion "Update Policy & Version Locking Architecture (EP-021)"
+      * VersionLock Format und Location Search Order
+      * ImageReference Struktur (PullRef/TagRef)
+      * Update Policy (rolling/pinned)
+      * Policy Enforcement Workflow
+      * Version Lock Example mit Digests
+      * Configuration Example
+      * CLI Commands Dokumentation
+      * Event Logging
+      * Testing Pattern (13 tests)
+      * Use Cases und Benefits
+    - Help-Text: `versions` Command in printUsage()
+- **Testing:**
+  - ✓ Alle 13 versions_test.go Tests bestehen
+  - ✓ go test ./internal/services/... passes (alle Tests)
+  - ✓ go build ./cmd/aistack compiles without errors
+  - ✓ Update Blocking Logic korrekt implementiert
+  - ✓ Policy Check in beiden Update-Paths (update-all + single service)
+  - ✓ Graceful Fallback bei Config-Load-Fehler
+- **Status:** Abgeschlossen — EP-021 Story T-035 implementiert. DoD erfüllt:
+  - ✓ versions.lock Parser existiert und funktioniert
+  - ✓ Enforcement beim Start/Update implementiert
+  - ✓ updates.mode=pinned blockiert Updates
+  - ✓ updates.mode=rolling erlaubt Updates (Default)
+  - ✓ Parser/Validator Tests vollständig (13 tests)
+  - ✓ CLI Command `aistack versions` zeigt Status
+  - ✓ Digest Support für deterministische Deployments
+  - ✓ Graceful Fallback (services not in lock use defaults)
+  - ✓ Clear Error Messages für User
+  - ✓ Dokumentation vollständig (CLAUDE.md + status.md)
+
 ## 2025-11-06 12:00 CET — EP-020 Implementation (Uninstall & Purge)
 - **Aufgabe:** EP-020 "Uninstall & Purge" vollständig implementieren mit Story T-033.
 - **Vorgehen:**

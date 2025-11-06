@@ -76,6 +76,7 @@ func commandHandlers() map[string]func() {
 		"health":       runHealth,
 		"repair":       func() { runServiceCommand("repair") },
 		"diag":         runDiag,
+		"versions":     runVersions,
 		"version":      runVersion,
 		"help":         printUsage,
 		"--help":       printUsage,
@@ -85,6 +86,124 @@ func commandHandlers() map[string]func() {
 
 func runVersion() {
 	fmt.Printf("aistack version %s\n", version)
+}
+
+// runVersions displays version lock status and update policy (Story T-035)
+func runVersions() {
+	fmt.Println("=== Version Lock & Update Policy ===")
+	fmt.Println()
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not load configuration: %v\n", err)
+		fmt.Println("Update Mode: unknown (using default: rolling)")
+	} else {
+		fmt.Printf("Update Mode: %s\n", cfg.Updates.Mode)
+		if cfg.Updates.Mode == "pinned" {
+			fmt.Println("  ⚠ Updates are DISABLED (change to 'rolling' to allow updates)")
+		} else {
+			fmt.Println("  ✓ Updates are ALLOWED")
+		}
+	}
+	fmt.Println()
+
+	// Display version lock status
+	fmt.Println("Version Lock Status:")
+
+	// Try to locate versions.lock file
+	lockPath := locateVersionsLockFile()
+	if lockPath == "" {
+		fmt.Println("  Status: NOT FOUND")
+		fmt.Println("  All services will use latest stable tags (rolling updates)")
+	} else {
+		fmt.Printf("  Status: ACTIVE\n")
+		fmt.Printf("  Location: %s\n", lockPath)
+		fmt.Println()
+		fmt.Println("  Locked Services:")
+
+		// Read and display lock file contents
+		displayVersionLockContents(lockPath)
+	}
+}
+
+// locateVersionsLockFile tries to find versions.lock using same logic as loadVersionLock
+func locateVersionsLockFile() string {
+	// Check environment variable first
+	if envPath := strings.TrimSpace(os.Getenv("AISTACK_VERSIONS_LOCK")); envPath != "" {
+		if abs, err := filepath.Abs(envPath); err == nil {
+			if _, err := os.Stat(abs); err == nil {
+				return abs
+			}
+		}
+	}
+
+	// Check config directory
+	configCandidate := filepath.Join("/etc/aistack", "versions.lock")
+	if _, err := os.Stat(configCandidate); err == nil {
+		return configCandidate
+	}
+
+	// Check executable directory
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates := []string{
+			filepath.Join(exeDir, "versions.lock"),
+			filepath.Join(exeDir, "..", "share", "aistack", "versions.lock"),
+		}
+		for _, candidate := range candidates {
+			if abs, err := filepath.Abs(candidate); err == nil {
+				if _, err := os.Stat(abs); err == nil {
+					return abs
+				}
+			}
+		}
+	}
+
+	// Check current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, "versions.lock")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+// displayVersionLockContents reads and displays the version lock file
+func displayVersionLockContents(path string) {
+	file, err := os.Open(filepath.Clean(path)) // #nosec G304 -- path is from controlled locations
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "    Error reading lock file: %v\n", err)
+		return
+	}
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", cerr)
+		}
+	}()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "    Error reading lock file: %v\n", err)
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	hasEntries := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fmt.Printf("    %s\n", line)
+		hasEntries = true
+	}
+
+	if !hasEntries {
+		fmt.Println("    (empty lock file)")
+	}
 }
 
 // runTUI starts the interactive TUI mode
@@ -278,6 +397,15 @@ func handleServiceStop(serviceName string, service services.Service) error {
 }
 
 func handleServiceUpdate(serviceName string, service services.Service) error {
+	// Check update policy before proceeding (Story T-035)
+	cfg, err := config.Load()
+	if err != nil {
+		// Warn but allow update if config can't be loaded (backwards compatibility)
+		fmt.Fprintf(os.Stderr, "Warning: Could not load config, proceeding with update: %v\n", err)
+	} else if cfg.Updates.Mode == "pinned" {
+		return fmt.Errorf("updates are disabled: updates.mode is set to 'pinned' in configuration\nChange to 'rolling' in config.yaml to allow updates")
+	}
+
 	fmt.Printf("Updating service: %s\n", serviceName)
 	fmt.Println("This will pull the latest image and restart the service.")
 	fmt.Println("Health checks will be performed and rollback will occur on failure.")
@@ -1867,6 +1995,7 @@ Usage:
   aistack wol-relay [flags]        Start HTTP→WoL relay (use --key or AISTACK_WOL_RELAY_KEY)
   aistack models <subcommand>      Model management (list, download, delete, stats, evict-oldest)
   aistack diag [--output path] [--no-logs] [--no-config]  Create diagnostic package (ZIP with logs, config, manifest)
+  aistack versions                 Show version lock status and update policy (rolling/pinned)
   aistack version                  Print version information
   aistack help                     Show this help message
 

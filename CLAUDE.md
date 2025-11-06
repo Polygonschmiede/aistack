@@ -438,6 +438,120 @@ Exit with status based on overall success
 - Verify independent failure handling (all services attempted)
 - Verify count consistency (total = successful + failed + rolled_back + unchanged)
 
+### Update Policy & Version Locking Architecture (EP-021)
+
+The update policy subsystem (`internal/services/versions.go`, `internal/config`) provides deterministic version control and update policy enforcement:
+
+**Version Lock** (`versions.lock`):
+- File-based version pinning for deterministic deployments
+- Format: `service:image[@digest]` (one per line)
+- Supports both tags and digests (digests preferred for immutability)
+- Comment lines supported (starting with `#`)
+- Location search order:
+  1. `$AISTACK_VERSIONS_LOCK` environment variable
+  2. `/etc/aistack/versions.lock`
+  3. Executable directory
+  4. Current working directory
+
+**VersionLock Structure**:
+- `entries map[string]string`: Service name → image reference mapping
+- `path string`: Location of loaded lock file
+- `Resolve(serviceName, defaultImage)`: Returns `ImageReference` with PullRef and TagRef
+- Graceful fallback: Services not in lock use default images
+
+**ImageReference**:
+- `PullRef`: Image reference for docker pull (with digest or tag)
+- `TagRef`: Image reference for docker tag (local tag, usually default)
+- Digest example: `PullRef=ollama/ollama@sha256:abc123`, `TagRef=ollama/ollama:latest`
+- Tag example: `PullRef=ollama/ollama:v0.1.0`, `TagRef=ollama/ollama:latest`
+
+**Update Policy** (`updates.mode` in config):
+- `rolling` (default): Updates allowed, uses latest tags or lock file if present
+- `pinned`: Updates blocked, services remain at current versions
+- Validated in `config/validation.go` (only "rolling" or "pinned" accepted)
+- Default: `rolling` for flexibility
+
+**Policy Enforcement**:
+- `Manager.checkUpdatePolicy()`: Loads config and validates update policy
+- Called at start of `UpdateAllServices()` and in CLI `handleServiceUpdate()`
+- When `pinned`: Returns error with clear message to user
+- When `rolling`: Allows updates to proceed
+- Fail-open: If config can't be loaded, updates are allowed (backwards compatibility)
+
+**Update Blocking Workflow**:
+```
+User runs: aistack update <service> OR aistack update-all
+  ↓
+checkUpdatePolicy()
+  ↓
+Load config.yaml
+  ├─ Config load failed → Warn and allow update
+  └─ Config loaded successfully
+      ↓
+      Check updates.mode
+      ├─ "rolling" → Allow update
+      └─ "pinned" → Block with error message
+          ↓
+          Error: "updates are disabled: updates.mode is set to 'pinned'"
+          ↓
+          Exit with code 1
+```
+
+**Version Lock Example** (`/etc/aistack/versions.lock`):
+```
+# Version lock file for aistack
+# Format: service:image[@digest|:tag]
+
+# Use digests for deterministic builds
+ollama:ollama/ollama@sha256:abc123def456...
+openwebui:ghcr.io/open-webui/open-webui@sha256:789012...
+
+# Or use specific tags
+localai:quay.io/go-skynet/local-ai:v2.8.0
+```
+
+**Configuration Example** (`config.yaml`):
+```yaml
+updates:
+  mode: pinned  # or "rolling" (default)
+```
+
+**CLI Commands**:
+- `aistack versions`: Display version lock status and update policy
+  - Shows current update mode (rolling/pinned)
+  - Shows version lock status (active/not found)
+  - Lists locked services with their image references
+- `aistack update <service>`: Update single service (blocked if pinned)
+- `aistack update-all`: Update all services (blocked if pinned)
+
+**Event Logging**:
+- `update.policy.check.failed`: Config load failed, allowing updates
+- `update.policy.blocked`: Updates blocked by pinned policy
+- `update.policy.allowed`: Updates allowed by rolling policy
+
+**Testing Pattern** (`versions_test.go`):
+- 13 comprehensive tests covering all scenarios
+- Tests for Resolve() with nil lock, tags, digests, missing services
+- Tests for loadVersionLock() with valid/invalid files
+- Tests for parser error cases (missing colon, empty entries)
+- Tests for file location resolution
+- Tests for empty files and comment-only files
+- All tests use temporary directories for isolation
+
+**Use Cases**:
+- **Development**: `rolling` mode for latest features
+- **Production**: `pinned` mode + `versions.lock` for stability
+- **CI/CD**: Lock file ensures reproducible deployments
+- **Testing**: Pin to specific versions for regression testing
+- **Rollback**: Update lock file to previous versions
+
+**Version Lock Benefits**:
+- **Determinism**: Same lock file = same deployment
+- **Auditability**: Git-tracked lock file shows version history
+- **Safety**: Prevents unintended updates in production
+- **Flexibility**: Per-service version control
+- **Digest support**: Immutable image references
+
 ### Backend Binding Architecture
 
 The backend binding subsystem (`internal/services/backend_binding.go`) provides dynamic backend switching for Open WebUI:
