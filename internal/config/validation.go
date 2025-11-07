@@ -5,12 +5,18 @@ import (
 	"strings"
 )
 
+const (
+	// Container runtime types
+	RuntimeDocker = "docker"
+	RuntimePodman = "podman"
+)
+
 // Validate checks if the configuration is valid
 func (c *Config) Validate() []ValidationError {
 	var errors []ValidationError
 
 	// Validate container_runtime
-	if c.ContainerRuntime != "docker" && c.ContainerRuntime != "podman" {
+	if c.ContainerRuntime != RuntimeDocker && c.ContainerRuntime != RuntimePodman {
 		errors = append(errors, ValidationError{
 			Path:    "container_runtime",
 			Message: fmt.Sprintf("must be 'docker' or 'podman', got '%s'", c.ContainerRuntime),

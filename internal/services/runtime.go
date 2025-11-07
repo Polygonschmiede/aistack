@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+const (
+	// Container status constants
+	containerStatusRunning = "running"
+)
+
 // Runtime represents a container runtime (Docker or Podman)
 type Runtime interface {
 	// ComposeUp starts services defined in a compose file
@@ -239,7 +244,7 @@ func (r *DockerRuntime) TagImage(source, target string) error {
 }
 
 // VolumeExists checks if a Docker volume exists
-func (d *DockerRuntime) VolumeExists(name string) (bool, error) {
+func (r *DockerRuntime) VolumeExists(name string) (bool, error) {
 	// #nosec G204 — volume names are validated before use
 	cmd := exec.Command("docker", "volume", "inspect", name)
 	err := cmd.Run()
@@ -251,7 +256,7 @@ func (d *DockerRuntime) VolumeExists(name string) (bool, error) {
 }
 
 // RemoveNetwork removes a Docker network
-func (d *DockerRuntime) RemoveNetwork(name string) error {
+func (r *DockerRuntime) RemoveNetwork(name string) error {
 	// #nosec G204 — network names are validated before use
 	cmd := exec.Command("docker", "network", "rm", name)
 	var stderr bytes.Buffer
@@ -268,12 +273,12 @@ func (d *DockerRuntime) RemoveNetwork(name string) error {
 }
 
 // IsContainerRunning checks if a Docker container is running
-func (d *DockerRuntime) IsContainerRunning(name string) (bool, error) {
-	status, err := d.GetContainerStatus(name)
+func (r *DockerRuntime) IsContainerRunning(name string) (bool, error) {
+	status, err := r.GetContainerStatus(name)
 	if err != nil {
 		return false, nil
 	}
-	return status == "running", nil
+	return status == containerStatusRunning, nil
 }
 
 // PodmanRuntime implements Runtime for Podman (best-effort support)
@@ -468,7 +473,7 @@ func (r *PodmanRuntime) IsContainerRunning(name string) (bool, error) {
 	if err != nil {
 		return false, nil
 	}
-	return status == "running", nil
+	return status == containerStatusRunning, nil
 }
 
 // DetectRuntime detects and returns the available container runtime

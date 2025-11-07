@@ -14,7 +14,7 @@ type SecretEntry struct {
 	LastRotated time.Time `json:"last_rotated"`
 }
 
-// SecretStore configuration
+// SecretStoreConfig holds configuration for the secret store
 type SecretStoreConfig struct {
 	SecretsDir     string
 	PassphraseFile string

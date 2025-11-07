@@ -232,8 +232,9 @@ func (m *Manager) UpdateAllServices() (*UpdateAllResult, error) {
 				stateDir = defaultStateDir
 			}
 
-			plan, _ := LoadUpdatePlan(serviceName, stateDir)
-			if plan != nil && plan.HealthAfterSwap == "unchanged" {
+			plan, loadErr := LoadUpdatePlan(serviceName, stateDir)
+			_ = loadErr // Error can be safely ignored, we just check if plan exists
+			if plan != nil && plan.HealthAfterSwap == healthStatusUnchanged {
 				serviceResult.Success = true
 				serviceResult.Changed = false
 				result.UnchangedCount++

@@ -131,11 +131,19 @@ func (p *Packager) createZIP(files map[string][]byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer zipFile.Close()
+	defer func() {
+		_ = zipFile.Close() // Will be synced by zipWriter.Close()
+	}()
 
 	// Create ZIP writer
 	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
+	defer func() {
+		if closeErr := zipWriter.Close(); closeErr != nil {
+			p.logger.Error("diag.package.zip.close_error", "Failed to close ZIP writer", map[string]interface{}{
+				"error": closeErr.Error(),
+			})
+		}
+	}()
 
 	// Add all files to ZIP
 	for path, content := range files {

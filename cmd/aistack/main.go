@@ -29,6 +29,7 @@ import (
 const (
 	version           = "0.1.0-dev"
 	localAIModelsPath = "/var/lib/aistack/volumes/localai_models"
+	confirmationYes   = "yes"
 )
 
 func main() {
@@ -569,12 +570,12 @@ func runPurge() {
 
 		var response string
 		if _, err := fmt.Scanln(&response); err != nil {
-			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
 			os.Exit(1)
 		}
 
-		if response != "yes" {
-			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+		if response != confirmationYes {
+			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
 			os.Exit(1)
 		}
 
@@ -582,12 +583,12 @@ func runPurge() {
 		fmt.Println()
 		fmt.Print("Are you absolutely sure? Type 'PURGE' to proceed: ")
 		if _, err := fmt.Scanln(&response); err != nil {
-			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
 			os.Exit(1)
 		}
 
 		if response != "PURGE" {
-			fmt.Fprintf(os.Stderr, "\nPurge cancelled\n")
+			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
 			os.Exit(1)
 		}
 	}
@@ -1020,7 +1021,7 @@ func runGPUUnlock() {
 		os.Exit(1)
 	}
 
-	if strings.ToLower(response) != "yes" {
+	if strings.ToLower(response) != confirmationYes {
 		fmt.Println("Aborted.")
 		return
 	}
@@ -1819,7 +1820,7 @@ func runModelsDelete() {
 		os.Exit(1)
 	}
 
-	if strings.ToLower(response) != "yes" {
+	if strings.ToLower(response) != confirmationYes {
 		fmt.Println("Aborted.")
 		return
 	}

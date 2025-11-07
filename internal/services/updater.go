@@ -10,6 +10,11 @@ import (
 	"aistack/internal/logging"
 )
 
+const (
+	// HealthAfterSwap special values
+	healthStatusUnchanged = "unchanged"
+)
+
 // UpdatePlan tracks an update operation for rollback capability
 // Story T-018: Ollama Update & Rollback (Service-specific)
 type UpdatePlan struct {
@@ -126,7 +131,7 @@ func (u *ServiceUpdater) Update() error {
 			"image_id": newImageID,
 		})
 		plan.Status = planStatusCompleted
-		plan.HealthAfterSwap = "unchanged"
+		plan.HealthAfterSwap = healthStatusUnchanged
 		plan.CompletedAt = time.Now()
 		u.persistPlan(plan, "image_unchanged")
 		return nil

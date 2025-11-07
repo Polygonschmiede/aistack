@@ -58,7 +58,7 @@ func NewFileLogger(minLevel Level, logFilePath string) (*Logger, error) {
 	}
 
 	// Open log file (append mode, create if not exists)
-	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0640)
+	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -103,7 +103,7 @@ func (l *Logger) Log(level Level, eventType, message string, payload map[string]
 		output = os.Stderr
 	}
 
-	fmt.Fprintln(output, string(data))
+	_, _ = fmt.Fprintln(output, string(data)) // Best-effort logging, error can be safely ignored
 }
 
 // Debug logs a debug-level event
