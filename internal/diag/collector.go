@@ -15,13 +15,13 @@ import (
 
 // Collector gathers diagnostic artifacts
 type Collector struct {
-	config   *DiagConfig
+	config   *Config
 	redactor *Redactor
 	logger   *logging.Logger
 }
 
 // NewCollector creates a new diagnostic collector
-func NewCollector(config *DiagConfig, logger *logging.Logger) *Collector {
+func NewCollector(config *Config, logger *logging.Logger) *Collector {
 	return &Collector{
 		config:   config,
 		redactor: NewRedactor(),
@@ -176,7 +176,9 @@ func CalculateFileSHA256(path string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		_ = file.Close() // Read-only operation, error can be safely ignored
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Fprintf(os.Stderr, "diag: failed to close file %s: %v\n", path, closeErr)
+		}
 	}()
 
 	hash := sha256.New()

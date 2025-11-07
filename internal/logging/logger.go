@@ -103,7 +103,12 @@ func (l *Logger) Log(level Level, eventType, message string, payload map[string]
 		output = os.Stderr
 	}
 
-	_, _ = fmt.Fprintln(output, string(data)) // Best-effort logging, error can be safely ignored
+	if _, err := fmt.Fprintln(output, string(data)); err != nil {
+		// Best-effort logging: fallback to stderr when the primary writer fails
+		if output != os.Stderr {
+			fmt.Fprintf(os.Stderr, "Failed to write log event: %v\n", err)
+		}
+	}
 }
 
 // Debug logs a debug-level event

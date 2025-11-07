@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	// Container runtime types
+	// RuntimeDocker identifies the Docker container runtime option.
 	RuntimeDocker = "docker"
+	// RuntimePodman identifies the Podman container runtime option.
 	RuntimePodman = "podman"
 )
 
@@ -15,24 +16,43 @@ const (
 func (c *Config) Validate() []ValidationError {
 	var errors []ValidationError
 
-	// Validate container_runtime
-	if c.ContainerRuntime != RuntimeDocker && c.ContainerRuntime != RuntimePodman {
-		errors = append(errors, ValidationError{
-			Path:    "container_runtime",
-			Message: fmt.Sprintf("must be 'docker' or 'podman', got '%s'", c.ContainerRuntime),
-		})
+	errors = append(errors, c.validateContainerRuntime()...)
+	errors = append(errors, c.validateProfile()...)
+	errors = append(errors, c.validateIdleSettings()...)
+	errors = append(errors, c.validatePowerEstimation()...)
+	errors = append(errors, c.validateLogging()...)
+	errors = append(errors, c.validateUpdates()...)
+	errors = append(errors, c.validateWOL()...)
+
+	return errors
+}
+
+func (c *Config) validateContainerRuntime() []ValidationError {
+	if c.ContainerRuntime == RuntimeDocker || c.ContainerRuntime == RuntimePodman {
+		return nil
 	}
 
-	// Validate profile
+	return []ValidationError{{
+		Path:    "container_runtime",
+		Message: fmt.Sprintf("must be '%s' or '%s', got '%s'", RuntimeDocker, RuntimePodman, c.ContainerRuntime),
+	}}
+}
+
+func (c *Config) validateProfile() []ValidationError {
 	validProfiles := []string{"minimal", "standard-gpu", "dev"}
-	if !contains(validProfiles, c.Profile) {
-		errors = append(errors, ValidationError{
-			Path:    "profile",
-			Message: fmt.Sprintf("must be one of %v, got '%s'", validProfiles, c.Profile),
-		})
+	if contains(validProfiles, c.Profile) {
+		return nil
 	}
 
-	// Validate idle thresholds
+	return []ValidationError{{
+		Path:    "profile",
+		Message: fmt.Sprintf("must be one of %v, got '%s'", validProfiles, c.Profile),
+	}}
+}
+
+func (c *Config) validateIdleSettings() []ValidationError {
+	var errors []ValidationError
+
 	if c.Idle.CPUIdleThreshold < 0 || c.Idle.CPUIdleThreshold > 100 {
 		errors = append(errors, ValidationError{
 			Path:    "idle.cpu_idle_threshold",
@@ -61,15 +81,22 @@ func (c *Config) Validate() []ValidationError {
 		})
 	}
 
-	// Validate power estimation
-	if c.PowerEstimation.BaselineWatts < 0 {
-		errors = append(errors, ValidationError{
-			Path:    "power_estimation.baseline_watts",
-			Message: fmt.Sprintf("must be non-negative, got %f", c.PowerEstimation.BaselineWatts),
-		})
+	return errors
+}
+
+func (c *Config) validatePowerEstimation() []ValidationError {
+	if c.PowerEstimation.BaselineWatts >= 0 {
+		return nil
 	}
 
-	// Validate logging level
+	return []ValidationError{{
+		Path:    "power_estimation.baseline_watts",
+		Message: fmt.Sprintf("must be non-negative, got %f", c.PowerEstimation.BaselineWatts),
+	}}
+}
+
+func (c *Config) validateLogging() []ValidationError {
+	var errors []ValidationError
 	validLevels := []string{"debug", "info", "warn", "error"}
 	if !contains(validLevels, c.Logging.Level) {
 		errors = append(errors, ValidationError{
@@ -78,7 +105,6 @@ func (c *Config) Validate() []ValidationError {
 		})
 	}
 
-	// Validate logging format
 	validFormats := []string{"json", "text"}
 	if !contains(validFormats, c.Logging.Format) {
 		errors = append(errors, ValidationError{
@@ -87,26 +113,34 @@ func (c *Config) Validate() []ValidationError {
 		})
 	}
 
-	// Validate updates mode
-	validModes := []string{"rolling", "pinned"}
-	if !contains(validModes, c.Updates.Mode) {
-		errors = append(errors, ValidationError{
-			Path:    "updates.mode",
-			Message: fmt.Sprintf("must be one of %v, got '%s'", validModes, c.Updates.Mode),
-		})
-	}
-
-	// Validate WoL MAC address format (basic check)
-	if c.WoL.MAC != "" && c.WoL.MAC != "00:00:00:00:00:00" {
-		if !isValidMACFormat(c.WoL.MAC) {
-			errors = append(errors, ValidationError{
-				Path:    "wol.mac",
-				Message: fmt.Sprintf("invalid MAC address format: %s", c.WoL.MAC),
-			})
-		}
-	}
-
 	return errors
+}
+
+func (c *Config) validateUpdates() []ValidationError {
+	validModes := []string{"rolling", "pinned"}
+	if contains(validModes, c.Updates.Mode) {
+		return nil
+	}
+
+	return []ValidationError{{
+		Path:    "updates.mode",
+		Message: fmt.Sprintf("must be one of %v, got '%s'", validModes, c.Updates.Mode),
+	}}
+}
+
+func (c *Config) validateWOL() []ValidationError {
+	if c.WoL.MAC == "" || c.WoL.MAC == "00:00:00:00:00:00" {
+		return nil
+	}
+
+	if isValidMACFormat(c.WoL.MAC) {
+		return nil
+	}
+
+	return []ValidationError{{
+		Path:    "wol.mac",
+		Message: fmt.Sprintf("invalid MAC address format: %s", c.WoL.MAC),
+	}}
 }
 
 // contains checks if a string is in a slice

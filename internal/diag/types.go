@@ -17,8 +17,8 @@ type ManifestFile struct {
 	SHA256    string `json:"sha256"`
 }
 
-// DiagConfig configures diagnostic collection
-type DiagConfig struct {
+// Config configures diagnostic collection
+type Config struct {
 	LogDir        string
 	ConfigPath    string
 	OutputPath    string
@@ -27,9 +27,9 @@ type DiagConfig struct {
 	Version       string
 }
 
-// NewDiagConfig creates a default diagnostic config
-func NewDiagConfig(version string) *DiagConfig {
-	return &DiagConfig{
+// NewConfig creates a default diagnostic config
+func NewConfig(version string) *Config {
+	return &Config{
 		LogDir:        "/var/log/aistack",
 		ConfigPath:    "/etc/aistack/config.yaml",
 		OutputPath:    generateOutputPath(),

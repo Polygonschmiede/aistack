@@ -26,13 +26,13 @@ func TestCollector_CollectLogs(t *testing.T) {
 
 	for name, content := range logFiles {
 		path := filepath.Join(tmpDir, name)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			t.Fatal(err)
+		if writeErr := os.WriteFile(path, []byte(content), 0o644); writeErr != nil {
+			t.Fatal(writeErr)
 		}
 	}
 
 	// Create collector
-	config := &DiagConfig{
+	config := &Config{
 		LogDir:      tmpDir,
 		IncludeLogs: true,
 	}
@@ -65,7 +65,7 @@ func TestCollector_CollectLogs(t *testing.T) {
 }
 
 func TestCollector_CollectLogs_MissingDirectory(t *testing.T) {
-	config := &DiagConfig{
+	config := &Config{
 		LogDir:      "/nonexistent/path",
 		IncludeLogs: true,
 	}
@@ -84,7 +84,7 @@ func TestCollector_CollectLogs_MissingDirectory(t *testing.T) {
 }
 
 func TestCollector_CollectLogs_Disabled(t *testing.T) {
-	config := &DiagConfig{
+	config := &Config{
 		LogDir:      "/var/log/aistack",
 		IncludeLogs: false,
 	}
@@ -114,12 +114,12 @@ func TestCollector_CollectConfig(t *testing.T) {
 api_key: sk-1234567890abcdef
 timeout: 30
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(configPath, []byte(configContent), 0o644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	// Create collector
-	config := &DiagConfig{
+	config := &Config{
 		ConfigPath:    configPath,
 		IncludeConfig: true,
 	}
@@ -161,7 +161,7 @@ timeout: 30
 }
 
 func TestCollector_CollectConfig_MissingFile(t *testing.T) {
-	config := &DiagConfig{
+	config := &Config{
 		ConfigPath:    "/nonexistent/config.yaml",
 		IncludeConfig: true,
 	}
@@ -180,7 +180,7 @@ func TestCollector_CollectConfig_MissingFile(t *testing.T) {
 }
 
 func TestCollector_CollectSystemInfo(t *testing.T) {
-	config := &DiagConfig{
+	config := &Config{
 		Version: "0.9.0",
 	}
 	logger := logging.NewLogger(logging.LevelInfo)

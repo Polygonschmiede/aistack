@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,16 +9,16 @@ import (
 
 func TestVersionLock_Resolve_NoLock(t *testing.T) {
 	var lock *VersionLock
-	ref, err := lock.Resolve("ollama", "ollama/ollama:latest")
+	ref, err := lock.Resolve("ollama", OllamaImageName)
 	if err != nil {
 		t.Fatalf("Resolve() with nil lock should not error: %v", err)
 	}
 
-	if ref.PullRef != "ollama/ollama:latest" {
-		t.Errorf("PullRef = %s, want ollama/ollama:latest", ref.PullRef)
+	if ref.PullRef != OllamaImageName {
+		t.Errorf("PullRef = %s, want %s", ref.PullRef, OllamaImageName)
 	}
-	if ref.TagRef != "ollama/ollama:latest" {
-		t.Errorf("TagRef = %s, want ollama/ollama:latest", ref.TagRef)
+	if ref.TagRef != OllamaImageName {
+		t.Errorf("TagRef = %s, want %s", ref.TagRef, OllamaImageName)
 	}
 }
 
@@ -29,7 +30,7 @@ func TestVersionLock_Resolve_WithTag(t *testing.T) {
 		path: "/test/versions.lock",
 	}
 
-	ref, err := lock.Resolve("ollama", "ollama/ollama:latest")
+	ref, err := lock.Resolve("ollama", OllamaImageName)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
@@ -37,8 +38,8 @@ func TestVersionLock_Resolve_WithTag(t *testing.T) {
 	if ref.PullRef != "ollama/ollama:v0.1.0" {
 		t.Errorf("PullRef = %s, want ollama/ollama:v0.1.0", ref.PullRef)
 	}
-	if ref.TagRef != "ollama/ollama:latest" {
-		t.Errorf("TagRef = %s, want ollama/ollama:latest", ref.TagRef)
+	if ref.TagRef != OllamaImageName {
+		t.Errorf("TagRef = %s, want %s", ref.TagRef, OllamaImageName)
 	}
 }
 
@@ -50,7 +51,7 @@ func TestVersionLock_Resolve_WithDigest(t *testing.T) {
 		path: "/test/versions.lock",
 	}
 
-	ref, err := lock.Resolve("ollama", "ollama/ollama:latest")
+	ref, err := lock.Resolve("ollama", OllamaImageName)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
@@ -58,8 +59,8 @@ func TestVersionLock_Resolve_WithDigest(t *testing.T) {
 	if ref.PullRef != "ollama/ollama@sha256:abc123def456" {
 		t.Errorf("PullRef = %s, want ollama/ollama@sha256:abc123def456", ref.PullRef)
 	}
-	if ref.TagRef != "ollama/ollama:latest" {
-		t.Errorf("TagRef = %s, want ollama/ollama:latest", ref.TagRef)
+	if ref.TagRef != OllamaImageName {
+		t.Errorf("TagRef = %s, want %s", ref.TagRef, OllamaImageName)
 	}
 }
 
@@ -72,16 +73,16 @@ func TestVersionLock_Resolve_ServiceNotInLock(t *testing.T) {
 	}
 
 	// Service not in lock should fall back to default
-	ref, err := lock.Resolve("localai", "quay.io/go-skynet/local-ai:latest")
+	ref, err := lock.Resolve("localai", LocalAIImageName)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
 
-	if ref.PullRef != "quay.io/go-skynet/local-ai:latest" {
-		t.Errorf("PullRef = %s, want quay.io/go-skynet/local-ai:latest", ref.PullRef)
+	if ref.PullRef != LocalAIImageName {
+		t.Errorf("PullRef = %s, want %s", ref.PullRef, LocalAIImageName)
 	}
-	if ref.TagRef != "quay.io/go-skynet/local-ai:latest" {
-		t.Errorf("TagRef = %s, want quay.io/go-skynet/local-ai:latest", ref.TagRef)
+	if ref.TagRef != LocalAIImageName {
+		t.Errorf("TagRef = %s, want %s", ref.TagRef, LocalAIImageName)
 	}
 }
 
@@ -93,7 +94,7 @@ func TestVersionLock_Resolve_EmptyEntry(t *testing.T) {
 		path: "/test/versions.lock",
 	}
 
-	_, err := lock.Resolve("ollama", "ollama/ollama:latest")
+	_, err := lock.Resolve("ollama", OllamaImageName)
 	if err == nil {
 		t.Error("Resolve() with empty entry should return error")
 	}
@@ -129,13 +130,13 @@ func TestLoadVersionLock_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	lockPath := filepath.Join(tmpDir, "versions.lock")
 
-	content := `# Version lock file
+	content := fmt.Sprintf(`# Version lock file
 ollama:ollama/ollama:v0.1.0
 openwebui:ghcr.io/open-webui/open-webui@sha256:abc123
-localai:quay.io/go-skynet/local-ai:latest
+localai:%s
 
 # Comment line
-`
+`, LocalAIImageName)
 	if err := os.WriteFile(lockPath, []byte(content), 0o640); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -163,8 +164,8 @@ localai:quay.io/go-skynet/local-ai:latest
 	if lock.entries["openwebui"] != "ghcr.io/open-webui/open-webui@sha256:abc123" {
 		t.Errorf("openwebui entry = %s, want ghcr.io/open-webui/open-webui@sha256:abc123", lock.entries["openwebui"])
 	}
-	if lock.entries["localai"] != "quay.io/go-skynet/local-ai:latest" {
-		t.Errorf("localai entry = %s, want quay.io/go-skynet/local-ai:latest", lock.entries["localai"])
+	if lock.entries["localai"] != LocalAIImageName {
+		t.Errorf("localai entry = %s, want %s", lock.entries["localai"], LocalAIImageName)
 	}
 }
 
@@ -181,7 +182,7 @@ func TestLoadVersionLock_InvalidFormat(t *testing.T) {
 		},
 		{
 			name:    "empty service name",
-			content: ":ollama/ollama:latest\n",
+			content: ":" + OllamaImageName + "\n",
 			wantErr: "invalid versions.lock entry on line 1",
 		},
 		{

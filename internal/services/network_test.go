@@ -64,7 +64,7 @@ func (m *MockRuntime) GetContainerStatus(name string) (string, error) {
 		return status.State, nil
 	}
 	// Default to running for backward compatibility
-	return "running", nil
+	return serviceStateRunning, nil
 }
 
 func (m *MockRuntime) PullImage(image string) error {
@@ -111,7 +111,7 @@ func (m *MockRuntime) RemoveNetwork(name string) error {
 
 func (m *MockRuntime) IsContainerRunning(name string) (bool, error) {
 	if status, ok := m.containerStatuses[name]; ok {
-		return status.State == "running", nil
+		return status.State == serviceStateRunning, nil
 	}
 	return false, nil
 }

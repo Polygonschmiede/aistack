@@ -239,8 +239,8 @@ func TestFileLogger_WritesJSON(t *testing.T) {
 	})
 
 	// Close to flush
-	if err := logger.Close(); err != nil {
-		t.Fatalf("Failed to close logger: %v", err)
+	if closeErr := logger.Close(); closeErr != nil {
+		t.Fatalf("Failed to close logger: %v", closeErr)
 	}
 
 	// Read log file
@@ -287,8 +287,8 @@ func TestFileLogger_LevelFiltering(t *testing.T) {
 	logger.Warn("test.warn", "Warn message", nil)
 	logger.Error("test.error", "Error message", nil)
 
-	if err := logger.Close(); err != nil {
-		t.Fatalf("Failed to close logger: %v", err)
+	if closeErr := logger.Close(); closeErr != nil {
+		t.Fatalf("Failed to close logger: %v", closeErr)
 	}
 
 	// Read log file
@@ -331,8 +331,8 @@ func TestFileLogger_Append(t *testing.T) {
 		t.Fatalf("Failed to create file logger: %v", err)
 	}
 	logger1.Info("test.first", "First message", nil)
-	if err := logger1.Close(); err != nil {
-		t.Fatalf("Failed to close logger: %v", err)
+	if closeErr := logger1.Close(); closeErr != nil {
+		t.Fatalf("Failed to close logger: %v", closeErr)
 	}
 
 	// Create second logger and write event
@@ -341,8 +341,8 @@ func TestFileLogger_Append(t *testing.T) {
 		t.Fatalf("Failed to create file logger: %v", err)
 	}
 	logger2.Info("test.second", "Second message", nil)
-	if err := logger2.Close(); err != nil {
-		t.Fatalf("Failed to close logger: %v", err)
+	if closeErr := logger2.Close(); closeErr != nil {
+		t.Fatalf("Failed to close logger: %v", closeErr)
 	}
 
 	// Read log file

@@ -57,18 +57,18 @@ func (s *SecretStore) StoreSecret(name string, value []byte) error {
 	}
 
 	// Verify permissions
-	if err := s.verifyPermissions(secretPath); err != nil {
+	if permErr := s.verifyPermissions(secretPath); permErr != nil {
 		s.logger.Warn("secrets.permissions.invalid", "Secret file has incorrect permissions", map[string]interface{}{
 			"path":  secretPath,
-			"error": err.Error(),
+			"error": permErr.Error(),
 		})
 	}
 
 	// Update index
-	if err := s.updateIndex(name); err != nil {
+	if indexErr := s.updateIndex(name); indexErr != nil {
 		s.logger.Warn("secrets.index.update_failed", "Failed to update secrets index", map[string]interface{}{
 			"name":  name,
-			"error": err.Error(),
+			"error": indexErr.Error(),
 		})
 	}
 

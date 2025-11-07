@@ -20,14 +20,14 @@ func TestPackager_CreatePackage(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logDir := filepath.Join(tmpDir, "logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		t.Fatal(err)
+	if mkErr := os.MkdirAll(logDir, 0o755); mkErr != nil {
+		t.Fatal(mkErr)
 	}
 
 	// Create test log files
 	testLog := filepath.Join(logDir, "test.log")
-	if err := os.WriteFile(testLog, []byte("test log content\n"), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(testLog, []byte("test log content\n"), 0o644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	// Create test config
@@ -36,15 +36,15 @@ func TestPackager_CreatePackage(t *testing.T) {
 api_key: sk-secret123
 timeout: 30
 `
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(configPath, []byte(configContent), 0o644); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 
 	// Output path
 	outputPath := filepath.Join(tmpDir, "diag.zip")
 
 	// Create packager
-	config := &DiagConfig{
+	config := &Config{
 		LogDir:        logDir,
 		ConfigPath:    configPath,
 		OutputPath:    outputPath,
@@ -66,7 +66,7 @@ timeout: 30
 	}
 
 	// Verify ZIP file exists
-	if _, err := os.Stat(zipPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(zipPath); os.IsNotExist(statErr) {
 		t.Fatal("ZIP file was not created")
 	}
 
@@ -184,7 +184,7 @@ func TestPackager_CreatePackage_PartialFailure(t *testing.T) {
 	outputPath := filepath.Join(tmpDir, "diag.zip")
 
 	// Config with non-existent paths (should create partial package)
-	config := &DiagConfig{
+	config := &Config{
 		LogDir:        "/nonexistent/logs",
 		ConfigPath:    "/nonexistent/config.yaml",
 		OutputPath:    outputPath,
@@ -202,7 +202,7 @@ func TestPackager_CreatePackage_PartialFailure(t *testing.T) {
 	}
 
 	// Verify ZIP file exists
-	if _, err := os.Stat(zipPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(zipPath); os.IsNotExist(statErr) {
 		t.Fatal("ZIP file was not created")
 	}
 
@@ -234,8 +234,8 @@ func TestPackager_CreatePackage_PartialFailure(t *testing.T) {
 	}
 }
 
-func TestNewDiagConfig(t *testing.T) {
-	config := NewDiagConfig("1.0.0")
+func TestNewConfig(t *testing.T) {
+	config := NewConfig("1.0.0")
 
 	if config.Version != "1.0.0" {
 		t.Errorf("Expected version 1.0.0, got %s", config.Version)

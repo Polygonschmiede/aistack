@@ -527,76 +527,13 @@ func runRemove() {
 func runPurge() {
 	logger := logging.NewLogger(logging.LevelInfo)
 	composeDir := resolveComposeDir()
-
-	// Parse flags
-	all := false
-	removeConfigs := false
-	skipConfirm := false
-
-	for i := 2; i < len(os.Args); i++ {
-		switch os.Args[i] {
-		case "--all":
-			all = true
-		case "--remove-configs":
-			removeConfigs = true
-		case "--yes", "-y":
-			skipConfirm = true
-		}
-	}
-
-	if !all {
-		fmt.Fprintf(os.Stderr, "Usage: aistack purge --all [--remove-configs] [--yes]\n")
-		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Purges all services, volumes, and optionally configuration files.\n")
-		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "Flags:\n")
-		fmt.Fprintf(os.Stderr, "  --all             Remove all services and data (required)\n")
-		fmt.Fprintf(os.Stderr, "  --remove-configs  Also remove /etc/aistack configuration\n")
-		fmt.Fprintf(os.Stderr, "  --yes, -y         Skip confirmation prompts\n")
-		os.Exit(1)
-	}
-
-	// Double confirmation
-	if !skipConfirm {
-		fmt.Println("⚠️  WARNING: This will permanently delete:")
-		fmt.Println("  - All services (Ollama, Open WebUI, LocalAI)")
-		fmt.Println("  - All data volumes (models, conversations, caches)")
-		fmt.Println("  - State directory (/var/lib/aistack)")
-		if removeConfigs {
-			fmt.Println("  - Configuration directory (/etc/aistack)")
-		}
-		fmt.Println()
-		fmt.Print("Type 'yes' to confirm: ")
-
-		var response string
-		if _, err := fmt.Scanln(&response); err != nil {
-			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
-			os.Exit(1)
-		}
-
-		if response != confirmationYes {
-			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
-			os.Exit(1)
-		}
-
-		// Second confirmation for extra safety
-		fmt.Println()
-		fmt.Print("Are you absolutely sure? Type 'PURGE' to proceed: ")
-		if _, err := fmt.Scanln(&response); err != nil {
-			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
-			os.Exit(1)
-		}
-
-		if response != "PURGE" {
-			fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
-			os.Exit(1)
-		}
-	}
+	options := parsePurgeOptions(os.Args[2:])
+	requirePurgeFlags(options)
+	confirmPurge(options)
 
 	fmt.Println()
 	fmt.Println("Starting full system purge...")
 
-	// Initialize manager and purge manager
 	manager, err := services.NewManager(composeDir, logger)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
@@ -604,58 +541,146 @@ func runPurge() {
 	}
 
 	purgeManager := services.NewPurgeManager(manager, logger)
-
-	// Perform purge
-	log, err := purgeManager.PurgeAll(removeConfigs)
+	log, err := purgeManager.PurgeAll(options.removeConfigs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Purge failed: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Display results
+	displayPurgeResults(log)
+
+	fmt.Println()
+	fmt.Println("Verifying cleanup...")
+	isClean, leftovers := purgeManager.VerifyClean()
+	reportCleanupStatus(isClean, leftovers)
+	saveUninstallLog(purgeManager, logger, log)
+
+	if len(log.Errors) > 0 || !isClean {
+		os.Exit(1)
+	}
+}
+
+type purgeOptions struct {
+	all           bool
+	removeConfigs bool
+	skipConfirm   bool
+}
+
+func parsePurgeOptions(args []string) purgeOptions {
+	options := purgeOptions{}
+	for _, arg := range args {
+		switch arg {
+		case "--all":
+			options.all = true
+		case "--remove-configs":
+			options.removeConfigs = true
+		case "--yes", "-y":
+			options.skipConfirm = true
+		}
+	}
+	return options
+}
+
+func requirePurgeFlags(options purgeOptions) {
+	if options.all {
+		return
+	}
+	printPurgeUsage()
+	os.Exit(1)
+}
+
+func printPurgeUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: aistack purge --all [--remove-configs] [--yes]\n")
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "Purges all services, volumes, and optionally configuration files.\n")
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "Flags:\n")
+	fmt.Fprintf(os.Stderr, "  --all             Remove all services and data (required)\n")
+	fmt.Fprintf(os.Stderr, "  --remove-configs  Also remove /etc/aistack configuration\n")
+	fmt.Fprintf(os.Stderr, "  --yes, -y         Skip confirmation prompts\n")
+}
+
+func confirmPurge(options purgeOptions) {
+	if options.skipConfirm {
+		return
+	}
+
+	fmt.Println("⚠️  WARNING: This will permanently delete:")
+	fmt.Println("  - All services (Ollama, Open WebUI, LocalAI)")
+	fmt.Println("  - All data volumes (models, conversations, caches)")
+	fmt.Println("  - State directory (/var/lib/aistack)")
+	if options.removeConfigs {
+		fmt.Println("  - Configuration directory (/etc/aistack)")
+	}
+	fmt.Println()
+	fmt.Print("Type 'yes' to confirm: ")
+
+	var response string
+	if _, err := fmt.Scanln(&response); err != nil {
+		exitPurgeCanceled()
+	}
+
+	if response != confirmationYes {
+		exitPurgeCanceled()
+	}
+
+	fmt.Println()
+	fmt.Print("Are you absolutely sure? Type 'PURGE' to proceed: ")
+	if _, err := fmt.Scanln(&response); err != nil {
+		exitPurgeCanceled()
+	}
+
+	if response != "PURGE" {
+		exitPurgeCanceled()
+	}
+}
+
+func exitPurgeCanceled() {
+	fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
+	os.Exit(1)
+}
+
+func displayPurgeResults(log *services.UninstallLog) {
 	fmt.Println()
 	fmt.Printf("Purge completed. Removed %d items:\n", len(log.RemovedItems))
 	for _, item := range log.RemovedItems {
 		fmt.Printf("  - %s\n", item)
 	}
 
-	if len(log.Errors) > 0 {
-		fmt.Println()
-		fmt.Printf("⚠️  Encountered %d errors:\n", len(log.Errors))
-		for _, errMsg := range log.Errors {
-			fmt.Printf("  - %s\n", errMsg)
-		}
+	if len(log.Errors) == 0 {
+		return
 	}
 
-	// Verify system is clean
 	fmt.Println()
-	fmt.Println("Verifying cleanup...")
-	isClean, leftovers := purgeManager.VerifyClean()
+	fmt.Printf("⚠️  Encountered %d errors:\n", len(log.Errors))
+	for _, errMsg := range log.Errors {
+		fmt.Printf("  - %s\n", errMsg)
+	}
+}
 
+func reportCleanupStatus(isClean bool, leftovers []string) {
 	if isClean {
 		fmt.Println("✓ System is clean. All aistack components removed.")
-	} else {
-		fmt.Printf("⚠️  Found %d leftover items:\n", len(leftovers))
-		for _, item := range leftovers {
-			fmt.Printf("  - %s\n", item)
-		}
+		return
 	}
 
-	// Save uninstall log
+	fmt.Printf("⚠️  Found %d leftover items:\n", len(leftovers))
+	for _, item := range leftovers {
+		fmt.Printf("  - %s\n", item)
+	}
+}
+
+func saveUninstallLog(purgeManager *services.PurgeManager, logger *logging.Logger, log *services.UninstallLog) {
 	logPath := "/tmp/aistack_uninstall_log.json"
 	if err := purgeManager.SaveUninstallLog(log, logPath); err != nil {
 		logger.Warn("purge.log.save_failed", "Failed to save uninstall log", map[string]interface{}{
 			"error": err.Error(),
 		})
-	} else {
-		fmt.Println()
-		fmt.Printf("Uninstall log saved to: %s\n", logPath)
+		return
 	}
 
-	// Exit with error if there were problems
-	if len(log.Errors) > 0 || !isClean {
-		os.Exit(1)
-	}
+	fmt.Println()
+	fmt.Printf("Uninstall log saved to: %s\n", logPath)
 }
 
 // runStatus displays status of all services
@@ -782,7 +807,7 @@ func runDiag() {
 	logger := logging.NewLogger(logging.LevelInfo)
 
 	// Create default config
-	config := diag.NewDiagConfig(version)
+	config := diag.NewConfig(version)
 
 	// Parse command line options for custom paths
 	if len(os.Args) > 2 {

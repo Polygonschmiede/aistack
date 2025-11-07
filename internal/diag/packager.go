@@ -12,13 +12,13 @@ import (
 
 // Packager creates diagnostic ZIP packages
 type Packager struct {
-	config    *DiagConfig
+	config    *Config
 	collector *Collector
 	logger    *logging.Logger
 }
 
 // NewPackager creates a new diagnostic packager
-func NewPackager(config *DiagConfig, logger *logging.Logger) *Packager {
+func NewPackager(config *Config, logger *logging.Logger) *Packager {
 	return &Packager{
 		config:    config,
 		collector: NewCollector(config, logger),
@@ -132,7 +132,11 @@ func (p *Packager) createZIP(files map[string][]byte) error {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer func() {
-		_ = zipFile.Close() // Will be synced by zipWriter.Close()
+		if closeErr := zipFile.Close(); closeErr != nil {
+			p.logger.Warn("diag.package.zipfile.close_error", "Failed to close ZIP file", map[string]interface{}{
+				"error": closeErr.Error(),
+			})
+		}
 	}()
 
 	// Create ZIP writer

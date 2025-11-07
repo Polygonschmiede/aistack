@@ -8,6 +8,8 @@ import (
 	"aistack/internal/logging"
 )
 
+const testSecretName = "test-secret"
+
 func TestNewSecretStore(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "aistack-secrets-test")
 	if err != nil {
@@ -32,12 +34,12 @@ func TestNewSecretStore(t *testing.T) {
 	}
 
 	// Verify secrets directory was created
-	if _, err := os.Stat(config.SecretsDir); os.IsNotExist(err) {
+	if _, statErr := os.Stat(config.SecretsDir); os.IsNotExist(statErr) {
 		t.Error("Secrets directory was not created")
 	}
 
 	// Verify passphrase file was created
-	if _, err := os.Stat(config.PassphraseFile); os.IsNotExist(err) {
+	if _, statErr := os.Stat(config.PassphraseFile); os.IsNotExist(statErr) {
 		t.Error("Passphrase file was not created")
 	}
 
@@ -92,7 +94,7 @@ func TestSecretStore_StoreAndRetrieve(t *testing.T) {
 
 			// Verify file exists
 			secretPath := filepath.Join(config.SecretsDir, secretName+".enc")
-			if _, err := os.Stat(secretPath); os.IsNotExist(err) {
+			if _, statErr := os.Stat(secretPath); os.IsNotExist(statErr) {
 				t.Error("Secret file was not created")
 			}
 
@@ -168,19 +170,19 @@ func TestSecretStore_DeleteSecret(t *testing.T) {
 	}
 
 	// Store a secret
-	secretName := "test-secret"
-	if err := store.StoreSecret(secretName, []byte("value")); err != nil {
-		t.Fatalf("StoreSecret() error = %v", err)
+	secretName := testSecretName
+	if storeErr := store.StoreSecret(secretName, []byte("value")); storeErr != nil {
+		t.Fatalf("StoreSecret() error = %v", storeErr)
 	}
 
 	// Delete it
-	if err := store.DeleteSecret(secretName); err != nil {
-		t.Fatalf("DeleteSecret() error = %v", err)
+	if deleteErr := store.DeleteSecret(secretName); deleteErr != nil {
+		t.Fatalf("DeleteSecret() error = %v", deleteErr)
 	}
 
 	// Verify it's gone
 	secretPath := filepath.Join(config.SecretsDir, secretName+".enc")
-	if _, err := os.Stat(secretPath); !os.IsNotExist(err) {
+	if _, statErr := os.Stat(secretPath); !os.IsNotExist(statErr) {
 		t.Error("Secret file should not exist after deletion")
 	}
 
@@ -246,8 +248,8 @@ func TestSecretStore_ListSecrets(t *testing.T) {
 	// Store some secrets
 	secretNames := []string{"secret1", "secret2", "secret3"}
 	for _, name := range secretNames {
-		if err := store.StoreSecret(name, []byte("value")); err != nil {
-			t.Fatalf("StoreSecret() error = %v", err)
+		if storeErr := store.StoreSecret(name, []byte("value")); storeErr != nil {
+			t.Fatalf("StoreSecret() error = %v", storeErr)
 		}
 	}
 
@@ -293,9 +295,9 @@ func TestSecretStore_Index(t *testing.T) {
 	}
 
 	// Store a secret
-	secretName := "test-secret"
-	if err := store.StoreSecret(secretName, []byte("value1")); err != nil {
-		t.Fatalf("StoreSecret() error = %v", err)
+	secretName := testSecretName
+	if storeErr := store.StoreSecret(secretName, []byte("value1")); storeErr != nil {
+		t.Fatalf("StoreSecret() error = %v", storeErr)
 	}
 
 	// Load index
@@ -316,8 +318,8 @@ func TestSecretStore_Index(t *testing.T) {
 	// Update the secret (should update last_rotated)
 	oldRotated := index.Entries[0].LastRotated
 
-	if err := store.StoreSecret(secretName, []byte("value2")); err != nil {
-		t.Fatalf("StoreSecret() error = %v", err)
+	if storeErr := store.StoreSecret(secretName, []byte("value2")); storeErr != nil {
+		t.Fatalf("StoreSecret() error = %v", storeErr)
 	}
 
 	// Load index again
@@ -357,24 +359,24 @@ func TestSecretStore_PermissionsVerification(t *testing.T) {
 	}
 
 	// Store a secret
-	secretName := "test-secret"
-	if err := store.StoreSecret(secretName, []byte("value")); err != nil {
-		t.Fatalf("StoreSecret() error = %v", err)
+	secretName := testSecretName
+	if storeErr := store.StoreSecret(secretName, []byte("value")); storeErr != nil {
+		t.Fatalf("StoreSecret() error = %v", storeErr)
 	}
 
 	// Verify permissions are correct
 	secretPath := filepath.Join(config.SecretsDir, secretName+".enc")
-	if err := store.verifyPermissions(secretPath); err != nil {
-		t.Errorf("verifyPermissions() error = %v", err)
+	if permErr := store.verifyPermissions(secretPath); permErr != nil {
+		t.Errorf("verifyPermissions() error = %v", permErr)
 	}
 
 	// Change permissions to something wrong
-	if err := os.Chmod(secretPath, 0o644); err != nil {
-		t.Fatalf("Failed to chmod: %v", err)
+	if chmodErr := os.Chmod(secretPath, 0o644); chmodErr != nil {
+		t.Fatalf("Failed to chmod: %v", chmodErr)
 	}
 
 	// Verification should fail
-	if err := store.verifyPermissions(secretPath); err == nil {
+	if permErr := store.verifyPermissions(secretPath); permErr == nil {
 		t.Error("Expected error for wrong permissions")
 	}
 }
@@ -400,10 +402,10 @@ func TestSecretStore_PersistentPassphrase(t *testing.T) {
 	}
 
 	// Store a secret
-	secretName := "test-secret"
+	secretName := testSecretName
 	secretValue := []byte("my-secret")
-	if err := store1.StoreSecret(secretName, secretValue); err != nil {
-		t.Fatalf("StoreSecret() error = %v", err)
+	if storeErr := store1.StoreSecret(secretName, secretValue); storeErr != nil {
+		t.Fatalf("StoreSecret() error = %v", storeErr)
 	}
 
 	// Create second store (should reuse existing passphrase)
