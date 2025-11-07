@@ -8,6 +8,11 @@ import (
 	"strings"
 )
 
+const (
+	// Container status constants
+	containerStatusRunning = "running"
+)
+
 // Runtime represents a container runtime (Docker or Podman)
 type Runtime interface {
 	// ComposeUp starts services defined in a compose file
@@ -34,6 +39,12 @@ type Runtime interface {
 	RemoveContainer(name string) error
 	// TagImage retags an image reference (digest or ID) to a target reference
 	TagImage(source string, target string) error
+	// VolumeExists checks if a volume exists
+	VolumeExists(name string) (bool, error)
+	// RemoveNetwork removes a network
+	RemoveNetwork(name string) error
+	// IsContainerRunning checks if a container is running
+	IsContainerRunning(name string) (bool, error)
 }
 
 func fetchContainerLogs(binary, label, name string, tail int) (string, error) {
@@ -232,6 +243,44 @@ func (r *DockerRuntime) TagImage(source, target string) error {
 	return nil
 }
 
+// VolumeExists checks if a Docker volume exists
+func (r *DockerRuntime) VolumeExists(name string) (bool, error) {
+	// #nosec G204 — volume names are validated before use
+	cmd := exec.Command("docker", "volume", "inspect", name)
+	err := cmd.Run()
+	if err != nil {
+		// Volume doesn't exist
+		return false, nil
+	}
+	return true, nil
+}
+
+// RemoveNetwork removes a Docker network
+func (r *DockerRuntime) RemoveNetwork(name string) error {
+	// #nosec G204 — network names are validated before use
+	cmd := exec.Command("docker", "network", "rm", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		// Ignore error if network doesn't exist
+		if strings.Contains(stderr.String(), "not found") || strings.Contains(stderr.String(), "No such network") {
+			return nil
+		}
+		return fmt.Errorf("failed to remove network %s: %w, stderr: %s", name, err, stderr.String())
+	}
+	return nil
+}
+
+// IsContainerRunning checks if a Docker container is running
+func (r *DockerRuntime) IsContainerRunning(name string) (bool, error) {
+	status, err := r.GetContainerStatus(name)
+	if err != nil {
+		return false, nil
+	}
+	return status == containerStatusRunning, nil
+}
+
 // PodmanRuntime implements Runtime for Podman (best-effort support)
 type PodmanRuntime struct{}
 
@@ -391,6 +440,40 @@ func (r *PodmanRuntime) TagImage(source, target string) error {
 	}
 
 	return nil
+}
+
+// VolumeExists checks if a Podman volume exists
+func (r *PodmanRuntime) VolumeExists(name string) (bool, error) {
+	cmd := exec.Command("podman", "volume", "inspect", name)
+	err := cmd.Run()
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// RemoveNetwork removes a Podman network
+func (r *PodmanRuntime) RemoveNetwork(name string) error {
+	cmd := exec.Command("podman", "network", "rm", name)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if strings.Contains(stderr.String(), "not found") || strings.Contains(stderr.String(), "No such network") {
+			return nil
+		}
+		return fmt.Errorf("failed to remove podman network %s: %w, stderr: %s", name, err, stderr.String())
+	}
+	return nil
+}
+
+// IsContainerRunning checks if a Podman container is running
+func (r *PodmanRuntime) IsContainerRunning(name string) (bool, error) {
+	status, err := r.GetContainerStatus(name)
+	if err != nil {
+		return false, nil
+	}
+	return status == containerStatusRunning, nil
 }
 
 // DetectRuntime detects and returns the available container runtime

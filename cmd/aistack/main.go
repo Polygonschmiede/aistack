@@ -13,6 +13,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aistack/internal/agent"
+	"aistack/internal/config"
+	"aistack/internal/diag"
 	"aistack/internal/gpu"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
@@ -27,6 +29,7 @@ import (
 const (
 	version           = "0.1.0-dev"
 	localAIModelsPath = "/var/lib/aistack/volumes/localai_models"
+	confirmationYes   = "yes"
 )
 
 func main() {
@@ -55,9 +58,13 @@ func commandHandlers() map[string]func() {
 		"stop":         func() { runServiceCommand("stop") },
 		"status":       runStatus,
 		"update":       func() { runServiceCommand("update") },
+		"update-all":   runUpdateAll,
 		"logs":         func() { runServiceCommand("logs") },
 		"remove":       runRemove,
+		"uninstall":    runRemove, // Alias for remove
+		"purge":        runPurge,
 		"backend":      runBackendSwitch,
+		"config":       runConfig,
 		"gpu-check":    runGPUCheck,
 		"gpu-unlock":   runGPUUnlock,
 		"metrics-test": runMetricsTest,
@@ -69,6 +76,8 @@ func commandHandlers() map[string]func() {
 		"models":       runModels,
 		"health":       runHealth,
 		"repair":       func() { runServiceCommand("repair") },
+		"diag":         runDiag,
+		"versions":     runVersions,
 		"version":      runVersion,
 		"help":         printUsage,
 		"--help":       printUsage,
@@ -78,6 +87,124 @@ func commandHandlers() map[string]func() {
 
 func runVersion() {
 	fmt.Printf("aistack version %s\n", version)
+}
+
+// runVersions displays version lock status and update policy (Story T-035)
+func runVersions() {
+	fmt.Println("=== Version Lock & Update Policy ===")
+	fmt.Println()
+
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not load configuration: %v\n", err)
+		fmt.Println("Update Mode: unknown (using default: rolling)")
+	} else {
+		fmt.Printf("Update Mode: %s\n", cfg.Updates.Mode)
+		if cfg.Updates.Mode == "pinned" {
+			fmt.Println("  ⚠ Updates are DISABLED (change to 'rolling' to allow updates)")
+		} else {
+			fmt.Println("  ✓ Updates are ALLOWED")
+		}
+	}
+	fmt.Println()
+
+	// Display version lock status
+	fmt.Println("Version Lock Status:")
+
+	// Try to locate versions.lock file
+	lockPath := locateVersionsLockFile()
+	if lockPath == "" {
+		fmt.Println("  Status: NOT FOUND")
+		fmt.Println("  All services will use latest stable tags (rolling updates)")
+	} else {
+		fmt.Printf("  Status: ACTIVE\n")
+		fmt.Printf("  Location: %s\n", lockPath)
+		fmt.Println()
+		fmt.Println("  Locked Services:")
+
+		// Read and display lock file contents
+		displayVersionLockContents(lockPath)
+	}
+}
+
+// locateVersionsLockFile tries to find versions.lock using same logic as loadVersionLock
+func locateVersionsLockFile() string {
+	// Check environment variable first
+	if envPath := strings.TrimSpace(os.Getenv("AISTACK_VERSIONS_LOCK")); envPath != "" {
+		if abs, err := filepath.Abs(envPath); err == nil {
+			if _, err := os.Stat(abs); err == nil {
+				return abs
+			}
+		}
+	}
+
+	// Check config directory
+	configCandidate := filepath.Join("/etc/aistack", "versions.lock")
+	if _, err := os.Stat(configCandidate); err == nil {
+		return configCandidate
+	}
+
+	// Check executable directory
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates := []string{
+			filepath.Join(exeDir, "versions.lock"),
+			filepath.Join(exeDir, "..", "share", "aistack", "versions.lock"),
+		}
+		for _, candidate := range candidates {
+			if abs, err := filepath.Abs(candidate); err == nil {
+				if _, err := os.Stat(abs); err == nil {
+					return abs
+				}
+			}
+		}
+	}
+
+	// Check current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, "versions.lock")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	return ""
+}
+
+// displayVersionLockContents reads and displays the version lock file
+func displayVersionLockContents(path string) {
+	file, err := os.Open(filepath.Clean(path)) // #nosec G304 -- path is from controlled locations
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "    Error reading lock file: %v\n", err)
+		return
+	}
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to close file: %v\n", cerr)
+		}
+	}()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "    Error reading lock file: %v\n", err)
+		return
+	}
+
+	lines := strings.Split(string(content), "\n")
+	hasEntries := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fmt.Printf("    %s\n", line)
+		hasEntries = true
+	}
+
+	if !hasEntries {
+		fmt.Println("    (empty lock file)")
+	}
 }
 
 // runTUI starts the interactive TUI mode
@@ -271,6 +398,15 @@ func handleServiceStop(serviceName string, service services.Service) error {
 }
 
 func handleServiceUpdate(serviceName string, service services.Service) error {
+	// Check update policy before proceeding (Story T-035)
+	cfg, err := config.Load()
+	if err != nil {
+		// Warn but allow update if config can't be loaded (backwards compatibility)
+		fmt.Fprintf(os.Stderr, "Warning: Could not load config, proceeding with update: %v\n", err)
+	} else if cfg.Updates.Mode == "pinned" {
+		return fmt.Errorf("updates are disabled: updates.mode is set to 'pinned' in configuration\nChange to 'rolling' in config.yaml to allow updates")
+	}
+
 	fmt.Printf("Updating service: %s\n", serviceName)
 	fmt.Println("This will pull the latest image and restart the service.")
 	fmt.Println("Health checks will be performed and rollback will occur on failure.")
@@ -385,6 +521,166 @@ func runRemove() {
 	} else {
 		fmt.Println("  All data volumes were purged.")
 	}
+}
+
+// runPurge performs a complete system purge
+func runPurge() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+	options := parsePurgeOptions(os.Args[2:])
+	requirePurgeFlags(options)
+	confirmPurge(options)
+
+	fmt.Println()
+	fmt.Println("Starting full system purge...")
+
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	purgeManager := services.NewPurgeManager(manager, logger)
+	log, err := purgeManager.PurgeAll(options.removeConfigs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Purge failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	displayPurgeResults(log)
+
+	fmt.Println()
+	fmt.Println("Verifying cleanup...")
+	isClean, leftovers := purgeManager.VerifyClean()
+	reportCleanupStatus(isClean, leftovers)
+	saveUninstallLog(purgeManager, logger, log)
+
+	if len(log.Errors) > 0 || !isClean {
+		os.Exit(1)
+	}
+}
+
+type purgeOptions struct {
+	all           bool
+	removeConfigs bool
+	skipConfirm   bool
+}
+
+func parsePurgeOptions(args []string) purgeOptions {
+	options := purgeOptions{}
+	for _, arg := range args {
+		switch arg {
+		case "--all":
+			options.all = true
+		case "--remove-configs":
+			options.removeConfigs = true
+		case "--yes", "-y":
+			options.skipConfirm = true
+		}
+	}
+	return options
+}
+
+func requirePurgeFlags(options purgeOptions) {
+	if options.all {
+		return
+	}
+	printPurgeUsage()
+	os.Exit(1)
+}
+
+func printPurgeUsage() {
+	fmt.Fprintf(os.Stderr, "Usage: aistack purge --all [--remove-configs] [--yes]\n")
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "Purges all services, volumes, and optionally configuration files.\n")
+	fmt.Fprintf(os.Stderr, "\n")
+	fmt.Fprintf(os.Stderr, "Flags:\n")
+	fmt.Fprintf(os.Stderr, "  --all             Remove all services and data (required)\n")
+	fmt.Fprintf(os.Stderr, "  --remove-configs  Also remove /etc/aistack configuration\n")
+	fmt.Fprintf(os.Stderr, "  --yes, -y         Skip confirmation prompts\n")
+}
+
+func confirmPurge(options purgeOptions) {
+	if options.skipConfirm {
+		return
+	}
+
+	fmt.Println("⚠️  WARNING: This will permanently delete:")
+	fmt.Println("  - All services (Ollama, Open WebUI, LocalAI)")
+	fmt.Println("  - All data volumes (models, conversations, caches)")
+	fmt.Println("  - State directory (/var/lib/aistack)")
+	if options.removeConfigs {
+		fmt.Println("  - Configuration directory (/etc/aistack)")
+	}
+	fmt.Println()
+	fmt.Print("Type 'yes' to confirm: ")
+
+	var response string
+	if _, err := fmt.Scanln(&response); err != nil {
+		exitPurgeCanceled()
+	}
+
+	if response != confirmationYes {
+		exitPurgeCanceled()
+	}
+
+	fmt.Println()
+	fmt.Print("Are you absolutely sure? Type 'PURGE' to proceed: ")
+	if _, err := fmt.Scanln(&response); err != nil {
+		exitPurgeCanceled()
+	}
+
+	if response != "PURGE" {
+		exitPurgeCanceled()
+	}
+}
+
+func exitPurgeCanceled() {
+	fmt.Fprintf(os.Stderr, "\nPurge canceled\n")
+	os.Exit(1)
+}
+
+func displayPurgeResults(log *services.UninstallLog) {
+	fmt.Println()
+	fmt.Printf("Purge completed. Removed %d items:\n", len(log.RemovedItems))
+	for _, item := range log.RemovedItems {
+		fmt.Printf("  - %s\n", item)
+	}
+
+	if len(log.Errors) == 0 {
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("⚠️  Encountered %d errors:\n", len(log.Errors))
+	for _, errMsg := range log.Errors {
+		fmt.Printf("  - %s\n", errMsg)
+	}
+}
+
+func reportCleanupStatus(isClean bool, leftovers []string) {
+	if isClean {
+		fmt.Println("✓ System is clean. All aistack components removed.")
+		return
+	}
+
+	fmt.Printf("⚠️  Found %d leftover items:\n", len(leftovers))
+	for _, item := range leftovers {
+		fmt.Printf("  - %s\n", item)
+	}
+}
+
+func saveUninstallLog(purgeManager *services.PurgeManager, logger *logging.Logger, log *services.UninstallLog) {
+	logPath := "/tmp/aistack_uninstall_log.json"
+	if err := purgeManager.SaveUninstallLog(log, logPath); err != nil {
+		logger.Warn("purge.log.save_failed", "Failed to save uninstall log", map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("Uninstall log saved to: %s\n", logPath)
 }
 
 // runStatus displays status of all services
@@ -503,6 +799,69 @@ func getHealthIcon(health services.HealthStatus) string {
 	default:
 		return "?"
 	}
+}
+
+// runDiag creates a diagnostic package
+// Story T-028: Diagnosepaket/ZIP mit Redaction
+func runDiag() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	// Create default config
+	config := diag.NewConfig(version)
+
+	// Parse command line options for custom paths
+	if len(os.Args) > 2 {
+		for i := 2; i < len(os.Args); i++ {
+			arg := os.Args[i]
+			if arg == "--output" && i+1 < len(os.Args) {
+				config.OutputPath = os.Args[i+1]
+				i++
+			} else if arg == "--no-logs" {
+				config.IncludeLogs = false
+			} else if arg == "--no-config" {
+				config.IncludeConfig = false
+			}
+		}
+	}
+
+	fmt.Println("Creating diagnostic package...")
+	fmt.Printf("  Version: %s\n", config.Version)
+	fmt.Printf("  Logs: %v\n", config.IncludeLogs)
+	fmt.Printf("  Config: %v\n", config.IncludeConfig)
+	fmt.Println()
+
+	// Create packager and generate package
+	packager := diag.NewPackager(config, logger)
+	zipPath, err := packager.CreatePackage()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to create diagnostic package: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Get file size
+	fileInfo, err := os.Stat(zipPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Package created but failed to get file info: %v\n", err)
+		fmt.Printf("✓ Diagnostic package created: %s\n", zipPath)
+		return
+	}
+
+	fmt.Printf("✓ Diagnostic package created successfully\n")
+	fmt.Printf("  Path: %s\n", zipPath)
+	fmt.Printf("  Size: %s\n", formatBytes(fileInfo.Size()))
+	fmt.Println()
+	fmt.Println("The package contains:")
+	fmt.Println("  • System information and version details")
+	if config.IncludeLogs {
+		fmt.Println("  • Application logs (from /var/log/aistack)")
+	}
+	if config.IncludeConfig {
+		fmt.Println("  • Configuration files (secrets redacted)")
+	}
+	fmt.Println("  • Manifest with file checksums (diag_manifest.json)")
+	fmt.Println()
+	fmt.Println("You can share this package for troubleshooting.")
+	fmt.Println("All sensitive data has been redacted.")
 }
 
 // runGPUCheck performs GPU detection and displays results
@@ -687,7 +1046,7 @@ func runGPUUnlock() {
 		os.Exit(1)
 	}
 
-	if strings.ToLower(response) != "yes" {
+	if strings.ToLower(response) != confirmationYes {
 		fmt.Println("Aborted.")
 		return
 	}
@@ -1015,6 +1374,92 @@ func runWoLRelay() {
 	}
 }
 
+// runUpdateAll updates all services sequentially with health-gating
+// Story T-029: Container-Update "all" mit Health-Gate
+func runUpdateAll() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	composeDir := resolveComposeDir()
+
+	fmt.Println("Updating all services (LocalAI → Ollama → Open WebUI)...")
+	fmt.Println()
+
+	// Create service manager
+	manager, err := services.NewManager(composeDir, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to initialize service manager: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Run update all
+	result, err := manager.UpdateAllServices()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Update all failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Display summary
+	fmt.Println("=== Update Summary ===")
+	fmt.Printf("Total Services: %d\n", result.TotalServices)
+	fmt.Printf("✓ Successful: %d\n", result.SuccessfulCount)
+	fmt.Printf("⚠ Unchanged: %d\n", result.UnchangedCount)
+	fmt.Printf("⟲ Rolled Back: %d\n", result.RolledBackCount)
+	fmt.Printf("❌ Failed: %d\n", result.FailedCount)
+	fmt.Println()
+
+	// Display per-service results
+	fmt.Println("=== Service Results ===")
+	services := []string{"localai", "ollama", "openwebui"}
+	for _, serviceName := range services {
+		if res, exists := result.ServiceResults[serviceName]; exists {
+			icon := getUpdateStatusIcon(res)
+			status := getUpdateStatusText(res)
+			fmt.Printf("%s %s: %s (health: %s)\n", icon, serviceName, status, res.Health)
+			if res.ErrorMessage != "" && !res.Success {
+				fmt.Printf("  Error: %s\n", res.ErrorMessage)
+			}
+		}
+	}
+	fmt.Println()
+
+	// Exit with appropriate code
+	if result.FailedCount > 0 {
+		fmt.Println("⚠ Some services failed to update. Check logs for details.")
+		os.Exit(1)
+	}
+
+	if result.SuccessfulCount > 0 {
+		fmt.Println("✓ All services updated successfully")
+	} else if result.UnchangedCount == result.TotalServices {
+		fmt.Println("✓ All services are up to date (no changes)")
+	}
+}
+
+func getUpdateStatusIcon(res services.UpdateResult) string {
+	if res.Success {
+		if res.Changed {
+			return "✓"
+		}
+		return "○"
+	}
+	if res.RolledBack {
+		return "⟲"
+	}
+	return "❌"
+}
+
+func getUpdateStatusText(res services.UpdateResult) string {
+	if res.Success {
+		if res.Changed {
+			return "updated successfully"
+		}
+		return "unchanged (no update needed)"
+	}
+	if res.RolledBack {
+		return "rolled back (health check failed)"
+	}
+	return "failed"
+}
+
 // runBackendSwitch handles backend switching for Open WebUI
 // Story T-019: Backend-Switch (Ollama ↔ LocalAI)
 func runBackendSwitch() {
@@ -1092,6 +1537,95 @@ func runBackendSwitch() {
 	fmt.Println()
 	fmt.Println("Open WebUI is now connected to the new backend.")
 	fmt.Println("Access it at: http://localhost:3000")
+}
+
+// runConfig performs configuration file validation
+// Story T-031 (EP-018): Configuration management
+func runConfig() {
+	logger := logging.NewLogger(logging.LevelInfo)
+
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack config <subcommand>\n")
+		fmt.Fprintf(os.Stderr, "Subcommands:\n")
+		fmt.Fprintf(os.Stderr, "  test [path]  Test configuration file for validity\n")
+		os.Exit(1)
+	}
+
+	subcommand := strings.ToLower(os.Args[2])
+
+	switch subcommand {
+	case "test":
+		runConfigTest(logger)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config subcommand: %s\n", subcommand)
+		fmt.Fprintf(os.Stderr, "Valid subcommands: test\n")
+		os.Exit(1)
+	}
+}
+
+// runConfigTest validates configuration file(s)
+func runConfigTest(logger *logging.Logger) {
+	var cfg config.Config
+	var configErr error
+
+	// Check if specific path provided
+	if len(os.Args) > 3 {
+		path := os.Args[3]
+		fmt.Printf("Testing configuration file: %s\n", path)
+		cfg, configErr = config.LoadFrom(path)
+	} else {
+		// Test default system/user merge
+		fmt.Println("Testing configuration (system + user merge):")
+		systemPath := config.SystemConfigPath()
+		userPath := config.UserConfigPath()
+		fmt.Printf("  System config: %s\n", systemPath)
+		if userPath != "" {
+			fmt.Printf("  User config:   %s\n", userPath)
+		}
+		fmt.Println()
+
+		cfg, configErr = config.Load()
+	}
+
+	// Check for errors
+	if configErr != nil {
+		fmt.Fprintf(os.Stderr, "❌ Configuration validation FAILED:\n")
+		fmt.Fprintf(os.Stderr, "   %v\n", configErr)
+
+		logger.Error("config.validation.error", "Configuration validation failed", map[string]interface{}{
+			"error": configErr.Error(),
+		})
+		os.Exit(1)
+	}
+
+	// Display configuration summary
+	fmt.Println("✓ Configuration is VALID")
+	fmt.Println()
+	fmt.Println("Configuration Summary:")
+	fmt.Printf("  Container Runtime:    %s\n", cfg.ContainerRuntime)
+	fmt.Printf("  Profile:              %s\n", cfg.Profile)
+	fmt.Printf("  GPU Lock:             %t\n", cfg.GPULock)
+	fmt.Printf("  CPU Idle Threshold:   %d%%\n", cfg.Idle.CPUIdleThreshold)
+	fmt.Printf("  GPU Idle Threshold:   %d%%\n", cfg.Idle.GPUIdleThreshold)
+	fmt.Printf("  Idle Window:          %ds\n", cfg.Idle.WindowSeconds)
+	fmt.Printf("  Idle Timeout:         %ds\n", cfg.Idle.IdleTimeoutSeconds)
+	fmt.Printf("  Baseline Power:       %.1fW\n", cfg.PowerEstimation.BaselineWatts)
+	fmt.Printf("  Log Level:            %s\n", cfg.Logging.Level)
+	fmt.Printf("  Log Format:           %s\n", cfg.Logging.Format)
+	fmt.Printf("  Keep Cache:           %t\n", cfg.Models.KeepCacheOnUninstall)
+	fmt.Printf("  Updates Mode:         %s\n", cfg.Updates.Mode)
+
+	if cfg.WoL.Interface != "" && cfg.WoL.Interface != "eth0" {
+		fmt.Printf("  WoL Interface:        %s\n", cfg.WoL.Interface)
+	}
+	if cfg.WoL.MAC != "" && cfg.WoL.MAC != "00:00:00:00:00:00" {
+		fmt.Printf("  WoL MAC:              %s\n", cfg.WoL.MAC)
+	}
+
+	logger.Info("config.validation.ok", "Configuration validation passed", map[string]interface{}{
+		"profile": cfg.Profile,
+		"runtime": cfg.ContainerRuntime,
+	})
 }
 
 // runModels handles model management commands
@@ -1311,7 +1845,7 @@ func runModelsDelete() {
 		os.Exit(1)
 	}
 
-	if strings.ToLower(response) != "yes" {
+	if strings.ToLower(response) != confirmationYes {
 		fmt.Println("Aborted.")
 		return
 	}
@@ -1467,12 +2001,16 @@ Usage:
   aistack start <service>          Start a service
   aistack stop <service>           Stop a service
   aistack update <service>         Update a service to latest version (with rollback)
+  aistack update-all               Update all services sequentially (LocalAI → Ollama → OpenWebUI)
   aistack logs <service> [lines]   Show service logs (default: 100 lines)
   aistack remove <service> [--purge] Remove a service (keeps data by default)
+  aistack uninstall <service> [--purge] Alias for remove
+  aistack purge --all [--remove-configs] [--yes] Remove all services and data (requires double confirmation)
   aistack backend <ollama|localai> Switch Open WebUI backend (restarts service)
   aistack status                   Show status of all services
   aistack health [--save]          Generate comprehensive health report (services + GPU)
   aistack repair <service>         Repair a service (stop → remove → recreate with health check)
+  aistack config test [path]       Test configuration file for validity (defaults to system/user configs)
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack gpu-unlock               Force unlock GPU mutex (recovery)
   aistack metrics-test             Test metrics collection (CPU/GPU)
@@ -1482,6 +2020,8 @@ Usage:
   aistack wol-apply [interface]    Reapply persisted WoL configuration (for udev/systemd)
   aistack wol-relay [flags]        Start HTTP→WoL relay (use --key or AISTACK_WOL_RELAY_KEY)
   aistack models <subcommand>      Model management (list, download, delete, stats, evict-oldest)
+  aistack diag [--output path] [--no-logs] [--no-config]  Create diagnostic package (ZIP with logs, config, manifest)
+  aistack versions                 Show version lock status and update policy (rolling/pinned)
   aistack version                  Print version information
   aistack help                     Show this help message
 

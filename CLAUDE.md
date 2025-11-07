@@ -120,6 +120,89 @@ The metrics subsystem (`internal/metrics/`) collects system and GPU metrics for 
 - Table-driven tests for various hardware availability scenarios
 - Graceful degradation verified on macOS (no `/proc/stat`, RAPL, NVML)
 
+### Logging & Diagnostics Architecture
+
+The logging and diagnostics subsystem (`internal/logging/` and `internal/diag/`) provides structured event logging and diagnostic package creation:
+
+**Logging** (`internal/logging/`):
+- Structured JSON format with ISO-8601 timestamps
+- Level-based filtering: debug, info, warn, error
+- Dual output modes: stderr (default) and file-based logging
+- `NewLogger(minLevel)`: Creates stderr-based logger
+- `NewFileLogger(minLevel, logPath)`: Creates file-based logger with automatic directory creation
+- File permissions: 0750 for directories, 0640 for files (gosec compliant)
+- Thread-safe with configurable output writers
+- Event structure: `{"ts": "2025-11-05T...", "level": "info", "type": "event.type", "message": "...", "payload": {...}}`
+
+**Log Rotation** (`assets/logrotate/aistack`):
+- Size-based rotation: 100M for general logs, 500M for metrics
+- Daily rotation with retention: 7 days (general), 30 days (metrics)
+- Compression with `delaycompress`
+- Post-rotation hook: `systemctl reload aistack-agent.service`
+- Graceful handling: `missingok`, `notifempty`, `minsize`
+
+**Diagnostics** (`internal/diag/`):
+- `aistack diag`: Creates ZIP package with redacted secrets
+- Components:
+  - `redactor.go`: Secret redaction with regex patterns (API keys, tokens, passwords, env vars, connection strings)
+  - `collector.go`: Gathers logs, config, system info
+  - `packager.go`: Creates ZIP with manifest and SHA256 checksums
+  - `types.go`: Manifest format and configuration
+
+**Diagnostic Package Structure**:
+```
+aistack-diag-YYYYMMDD-HHMMSS.zip
+├── logs/
+│   ├── agent.log
+│   └── metrics.log
+├── config/
+│   └── config.yaml (secrets redacted)
+├── system_info.json (hostname, version, timestamp)
+└── diag_manifest.json (file list with SHA256 checksums)
+```
+
+**Manifest Format**:
+```json
+{
+  "timestamp": "2025-11-05T...",
+  "host": "ai-server-01",
+  "aistack_version": "0.1.0-dev",
+  "files": [
+    {
+      "path": "logs/agent.log",
+      "size_bytes": 102400,
+      "sha256": "abc123..."
+    }
+  ]
+}
+```
+
+**Secret Redaction Patterns**:
+- API keys: `api_key: sk-123` → `api_key: [REDACTED]`
+- Environment variables: `export API_KEY=xyz` → `export API_KEY=[REDACTED]`
+- Bearer tokens: `Authorization: Bearer xyz` → `Authorization: Bearer [REDACTED]`
+- Database URLs: `postgres://user:pass@host` → `postgres://user:[REDACTED]@host`
+
+**CLI Commands**:
+- `aistack diag`: Create diagnostic package (default path: `aistack-diag-<timestamp>.zip`)
+- `aistack diag --output /path/to/diag.zip`: Custom output path
+- `aistack diag --no-logs`: Exclude log files
+- `aistack diag --no-config`: Exclude configuration
+
+**Event Logging**:
+- `diag.collect.logs.complete`: Log collection finished (file count)
+- `diag.collect.config.complete`: Config collection with redaction
+- `diag.collect.sysinfo.complete`: System info gathered
+- `diag.package.start`: Diagnostic package creation started
+- `diag.package.complete`: Package created (file count, output path)
+- `diag.package.*.error`: Collection/packaging errors (graceful degradation)
+
+**Testing Pattern**:
+- Redactor tests: Verify all secret patterns are detected and redacted
+- Collector tests: Verify artifact gathering with missing files/directories
+- Packager tests: End-to-end ZIP creation with manifest validation
+- All tests use temporary directories for isolation
+
 ### Idle Engine & Autosuspend Architecture
 
 The idle detection subsystem (`internal/idle/`) provides intelligent system suspend based on CPU/GPU activity:
@@ -313,7 +396,8 @@ Health check
 - Allows mock health checks in tests
 
 **CLI Commands**:
-- `aistack update <service>`: Update with automatic rollback
+- `aistack update <service>`: Update single service with automatic rollback
+- `aistack update-all`: Update all services sequentially with independent rollback
 - `aistack logs <service> [lines]`: View container logs (default: 100 lines)
 
 **Event Logging**:
@@ -325,6 +409,148 @@ Health check
 - `service.update.health_failed`: Health check failed
 - `service.update.rollback`: Rollback initiated
 - `service.update.rollback.success`: Rollback succeeded
+
+**Update-All Feature** (Story T-029):
+- Updates all services sequentially in order: LocalAI → Ollama → Open WebUI
+- Each service update is independent: failure in one service does not affect others
+- `UpdateAllResult` tracks: successful, failed, rolled_back, unchanged counts
+- Per-service results with health status and error messages
+- Exit code 0 if all successful or unchanged, 1 if any failures
+
+**Update-All Workflow**:
+```
+For each service in [localai, ollama, openwebui]:
+  ↓
+Update service (with health-gating and rollback)
+  ├─ Success → Continue to next service
+  ├─ Unchanged → Continue to next service
+  ├─ Rollback → Log warning, continue to next service
+  └─ Failed → Log error, continue to next service
+  ↓
+Display summary (totals + per-service results)
+  ↓
+Exit with status based on overall success
+```
+
+**Testing Pattern**:
+- Mock manager for unit tests
+- Verify correct update order (LocalAI first, OpenWebUI last)
+- Verify independent failure handling (all services attempted)
+- Verify count consistency (total = successful + failed + rolled_back + unchanged)
+
+### Update Policy & Version Locking Architecture (EP-021)
+
+The update policy subsystem (`internal/services/versions.go`, `internal/config`) provides deterministic version control and update policy enforcement:
+
+**Version Lock** (`versions.lock`):
+- File-based version pinning for deterministic deployments
+- Format: `service:image[@digest]` (one per line)
+- Supports both tags and digests (digests preferred for immutability)
+- Comment lines supported (starting with `#`)
+- Location search order:
+  1. `$AISTACK_VERSIONS_LOCK` environment variable
+  2. `/etc/aistack/versions.lock`
+  3. Executable directory
+  4. Current working directory
+
+**VersionLock Structure**:
+- `entries map[string]string`: Service name → image reference mapping
+- `path string`: Location of loaded lock file
+- `Resolve(serviceName, defaultImage)`: Returns `ImageReference` with PullRef and TagRef
+- Graceful fallback: Services not in lock use default images
+
+**ImageReference**:
+- `PullRef`: Image reference for docker pull (with digest or tag)
+- `TagRef`: Image reference for docker tag (local tag, usually default)
+- Digest example: `PullRef=ollama/ollama@sha256:abc123`, `TagRef=ollama/ollama:latest`
+- Tag example: `PullRef=ollama/ollama:v0.1.0`, `TagRef=ollama/ollama:latest`
+
+**Update Policy** (`updates.mode` in config):
+- `rolling` (default): Updates allowed, uses latest tags or lock file if present
+- `pinned`: Updates blocked, services remain at current versions
+- Validated in `config/validation.go` (only "rolling" or "pinned" accepted)
+- Default: `rolling` for flexibility
+
+**Policy Enforcement**:
+- `Manager.checkUpdatePolicy()`: Loads config and validates update policy
+- Called at start of `UpdateAllServices()` and in CLI `handleServiceUpdate()`
+- When `pinned`: Returns error with clear message to user
+- When `rolling`: Allows updates to proceed
+- Fail-open: If config can't be loaded, updates are allowed (backwards compatibility)
+
+**Update Blocking Workflow**:
+```
+User runs: aistack update <service> OR aistack update-all
+  ↓
+checkUpdatePolicy()
+  ↓
+Load config.yaml
+  ├─ Config load failed → Warn and allow update
+  └─ Config loaded successfully
+      ↓
+      Check updates.mode
+      ├─ "rolling" → Allow update
+      └─ "pinned" → Block with error message
+          ↓
+          Error: "updates are disabled: updates.mode is set to 'pinned'"
+          ↓
+          Exit with code 1
+```
+
+**Version Lock Example** (`/etc/aistack/versions.lock`):
+```
+# Version lock file for aistack
+# Format: service:image[@digest|:tag]
+
+# Use digests for deterministic builds
+ollama:ollama/ollama@sha256:abc123def456...
+openwebui:ghcr.io/open-webui/open-webui@sha256:789012...
+
+# Or use specific tags
+localai:quay.io/go-skynet/local-ai:v2.8.0
+```
+
+**Configuration Example** (`config.yaml`):
+```yaml
+updates:
+  mode: pinned  # or "rolling" (default)
+```
+
+**CLI Commands**:
+- `aistack versions`: Display version lock status and update policy
+  - Shows current update mode (rolling/pinned)
+  - Shows version lock status (active/not found)
+  - Lists locked services with their image references
+- `aistack update <service>`: Update single service (blocked if pinned)
+- `aistack update-all`: Update all services (blocked if pinned)
+
+**Event Logging**:
+- `update.policy.check.failed`: Config load failed, allowing updates
+- `update.policy.blocked`: Updates blocked by pinned policy
+- `update.policy.allowed`: Updates allowed by rolling policy
+
+**Testing Pattern** (`versions_test.go`):
+- 13 comprehensive tests covering all scenarios
+- Tests for Resolve() with nil lock, tags, digests, missing services
+- Tests for loadVersionLock() with valid/invalid files
+- Tests for parser error cases (missing colon, empty entries)
+- Tests for file location resolution
+- Tests for empty files and comment-only files
+- All tests use temporary directories for isolation
+
+**Use Cases**:
+- **Development**: `rolling` mode for latest features
+- **Production**: `pinned` mode + `versions.lock` for stability
+- **CI/CD**: Lock file ensures reproducible deployments
+- **Testing**: Pin to specific versions for regression testing
+- **Rollback**: Update lock file to previous versions
+
+**Version Lock Benefits**:
+- **Determinism**: Same lock file = same deployment
+- **Auditability**: Git-tracked lock file shows version history
+- **Safety**: Prevents unintended updates in production
+- **Flexibility**: Per-service version control
+- **Digest support**: Immutable image references
 
 ### Backend Binding Architecture
 
@@ -476,6 +702,135 @@ Log service.removed event
 - Tests verify volume deletion with keepData=false
 - Graceful degradation on errors (logged warnings, no hard failures)
 
+### Uninstall & Purge Architecture (EP-020)
+
+The uninstall and purge subsystem (`internal/services/purge.go`) provides complete system cleanup with safety mechanisms:
+
+**Uninstall Command**:
+- `aistack uninstall <service> [--purge]`: Alias for `remove` command
+- Consistent terminology for users familiar with package managers
+- Same behavior: Default keeps volumes, `--purge` removes all data
+
+**Purge Manager** (`purge.go`):
+- `PurgeManager`: Orchestrates complete system cleanup
+- `UninstallLog`: Structured log of removal operations (JSON format)
+- `PurgeAll(removeConfigs bool)`: Removes all services, volumes, networks, and optionally configs
+- `VerifyClean()`: Post-purge verification with leftover detection
+- `SaveUninstallLog()`: Persists operation log for audit trail
+
+**Purge Workflow**:
+```
+CLI: aistack purge --all [--remove-configs] [--yes]
+  ↓
+Double Confirmation (unless --yes):
+  ├─ First prompt: Type 'yes' to confirm
+  └─ Second prompt: Type 'PURGE' to confirm
+  ↓
+PurgeAll() execution:
+  ├─ Remove all services (ollama, openwebui, localai)
+  ├─ Remove aistack network
+  ├─ Clean state directory (/var/lib/aistack)
+  │   ├─ Remove all files
+  │   └─ Preserve config.yaml and wol_config.json (unless --remove-configs)
+  └─ Remove configs (/etc/aistack) if --remove-configs
+  ↓
+VerifyClean():
+  ├─ Check for running containers
+  ├─ Check for remaining volumes
+  └─ Check for files in state directory
+  ↓
+SaveUninstallLog():
+  └─ Save to /var/lib/aistack/uninstall_log.json
+  ↓
+Display results:
+  ├─ Removed items count
+  ├─ Errors encountered
+  └─ Leftovers (if any)
+```
+
+**UninstallLog Structure**:
+```json
+{
+  "timestamp": "2025-11-06T10:00:00Z",
+  "target": "all",
+  "keep_cache": false,
+  "removed_items": [
+    "service:ollama",
+    "service:openwebui",
+    "service:localai",
+    "network:aistack-net",
+    "state:ollama_state.json",
+    "state:openwebui_state.json",
+    "configs:/etc/aistack"
+  ],
+  "errors": []
+}
+```
+
+**Safety Mechanisms**:
+- **Double confirmation**: Prevents accidental purge operations
+- **Graceful degradation**: Errors logged but don't stop cleanup process
+- **Config preservation**: By default, keeps user configurations
+- **Post-purge verification**: Detects and reports any leftovers
+- **Audit trail**: Detailed JSON log of all operations
+
+**State Directory Cleanup**:
+- Default location: `/var/lib/aistack` (override with `AISTACK_STATE_DIR`)
+- Files removed by default:
+  - Service state files (JSON)
+  - Health reports
+  - Idle state
+  - Update plans
+  - UI state
+  - Backend binding
+- Files preserved (unless `--remove-configs`):
+  - `config.yaml`: User configuration
+  - `wol_config.json`: Wake-on-LAN settings
+
+**Config Directory Cleanup**:
+- Location: `/etc/aistack` (from `configdir.ConfigDir()`)
+- Only removed with `--remove-configs` flag
+- Safety check: Only removes if path is `/etc/aistack`
+- Prevents accidental removal of non-standard config directories
+
+**Runtime Interface Extensions**:
+- `VolumeExists(name string)`: Check if volume exists
+- `RemoveNetwork(name string)`: Remove Docker/Podman network
+- `IsContainerRunning(name string)`: Check container state
+- Implemented for both DockerRuntime and PodmanRuntime
+
+**CLI Commands**:
+- `aistack uninstall <service> [--purge]`: Remove single service
+- `aistack purge --all`: Remove everything with double confirmation
+- `aistack purge --all --remove-configs`: Remove everything including configs
+- `aistack purge --all --yes`: Skip confirmation prompts (CI/automation)
+
+**Event Logging**:
+- `purge.started`: Purge operation initiated
+- `purge.service`: Service removal in progress
+- `purge.network`: Network removal
+- `purge.state_dir`: State directory cleanup
+- `purge.state_dir.skip`: File skipped (config preservation)
+- `purge.configs`: Config directory removal
+- `purge.completed`: Purge operation finished
+- `purge.verify`: Verification started
+- `purge.log.saved`: Uninstall log saved
+
+**Testing Pattern**:
+- `purge_test.go`: Comprehensive test coverage
+- Tests use temporary directories (via `AISTACK_STATE_DIR`)
+- Table-driven tests for state directory cleanup
+- Verification of config preservation logic
+- Mock implementations for all Runtime methods
+- File permission verification (0640 for logs)
+
+**Use Cases**:
+- **Development**: Clean slate between test runs
+- **CI/CD**: Reset environment state
+- **Troubleshooting**: Complete reinstall
+- **Decommissioning**: Remove all traces of aistack
+- **Disk space recovery**: Remove all cached models and data
+
 ### Health Checks & Repair Architecture
 
 The health check and repair subsystem (`internal/services/health_reporter.go`, `repair.go`) provides comprehensive health monitoring and automated service repair:
@@ -570,6 +925,80 @@ Health check
 - Table-driven tests for various repair scenarios
 - Idempotency testing (repair on already-healthy service)
 - Volume preservation verification
+
+### Security & Secrets Architecture
+
+The security and secrets subsystem (`internal/secrets/`) provides encrypted storage for sensitive data:
+
+**Encryption** (`crypto.go`):
+- NaCl secretbox (authenticated encryption) from `golang.org/x/crypto/nacl/secretbox`
+- Key derivation: SHA-256 hash of passphrase (32 bytes for secretbox)
+- Nonce: 24 bytes, randomly generated per encryption
+- Encrypted format: nonce (24 bytes) + authenticated ciphertext
+- `DeriveKey(passphrase)`: Derives encryption key from passphrase
+- `Encrypt(plaintext, key)`: Returns nonce + ciphertext
+- `Decrypt(encrypted, key)`: Extracts nonce, verifies & decrypts
+
+**Secret Store** (`store.go`):
+- Encrypted secret storage with automatic passphrase management
+- Storage: `/var/lib/aistack/secrets/*.enc` (file permissions 0600)
+- Passphrase file: `/var/lib/aistack/.passphrase` (permissions 0600)
+- Index file: `/var/lib/aistack/secrets/secrets_index.json` (metadata with last_rotated)
+- `StoreSecret(name, value)`: Encrypts and stores secret with permission verification
+- `RetrieveSecret(name)`: Decrypts and returns secret
+- `DeleteSecret(name)`: Removes secret and updates index
+- `ListSecrets()`: Returns list of stored secret names
+
+**Passphrase Management**:
+- Auto-generation: 64-character hex string (256 bits of entropy)
+- Persistent: Same passphrase reused across store instances
+- Strict permissions: 0600 on passphrase file
+- Location: Configurable via `SecretStoreConfig`
+
+**Secrets Index** (`secrets_index.json`):
+```json
+{
+  "entries": [
+    {
+      "name": "api-key",
+      "last_rotated": "2025-11-05T15:00:00Z"
+    }
+  ]
+}
+```
+
+**File Permissions**:
+- Secrets directory: 0750
+- Secret files (*.enc): 0600
+- Passphrase file: 0600
+- Index file: 0600
+- Automatic verification on store/retrieve
+
+**Security Properties**:
+- Authenticated encryption (NaCl secretbox prevents tampering)
+- Random nonces (same plaintext encrypts to different ciphertext)
+- Key derivation (passphrase → 32-byte key via SHA-256)
+- File permissions enforcement (0600 for all sensitive files)
+- No secrets in memory after operation completes
+
+**Error Handling**:
+- Missing passphrase: Auto-generated on first use
+- Wrong permissions: Warning logged, operation continues
+- Wrong key: Decryption fails with clear error message
+- Corrupted data: Authentication check fails
+- Missing secret: Clear "secret not found" error
+
+**Testing Pattern**:
+- Crypto tests: Encrypt/decrypt round-trip, wrong key, corrupted data, large data
+- Store tests: Store/retrieve, permissions, index updates, persistent passphrase
+- All tests use temporary directories for isolation
+- 16 comprehensive tests covering all failure modes
+
+**Use Cases**:
+- API keys and tokens
+- Database passwords
+- Service credentials
+- Any sensitive configuration data
 
 ### TUI Architecture
 
@@ -704,18 +1133,69 @@ This ensures continuity across sessions and provides a historical record of deve
 
 **Bootstrap**: Headless installation via `install.sh` script
 
-## Configuration Schema
+## Configuration Management Architecture (EP-018)
 
-Key configuration sections (from EP-018):
-- `container_runtime` - Docker/Podman selection
-- `profile` - Minimal/Standard-GPU/Dev
-- `gpu_lock` - Exclusive GPU mutex
+The configuration subsystem (`internal/config/`) provides robust YAML-based configuration with system/user merge and validation:
+
+**Configuration Files**:
+- `/etc/aistack/config.yaml` - System-wide configuration
+- `~/.aistack/config.yaml` - User-specific overrides
+- `config.yaml.example` - Example configuration template
+
+**Merge Strategy**:
+- Priority: defaults → system config → user config
+- User settings override system settings
+- All unspecified values use defaults from `DefaultConfig()`
+
+**Configuration Schema**:
+- `container_runtime` - Docker/Podman selection (default: docker)
+- `profile` - Minimal/Standard-GPU/Dev (default: standard-gpu)
+- `gpu_lock` - Exclusive GPU mutex (default: true)
 - `idle.*` - CPU/GPU thresholds, window, timeout
-- `power_estimation.baseline_watts` - Power calculation baseline
+  - `cpu_idle_threshold` - CPU idle % (default: 10)
+  - `gpu_idle_threshold` - GPU idle % (default: 5)
+  - `window_seconds` - Sliding window (default: 300)
+  - `idle_timeout_seconds` - Suspend timeout (default: 1800)
+- `power_estimation.baseline_watts` - Power calculation baseline (default: 50)
 - `wol.*` - Wake-on-LAN settings
+  - `interface` - Network interface (default: eth0)
+  - `mac` - MAC address
+  - `relay_url` - Optional HTTP relay URL
 - `logging.*` - Level and format
-- `models.keep_cache_on_uninstall` - Cache retention
-- `updates.mode` - Rolling vs. pinned
+  - `level` - debug/info/warn/error (default: info)
+  - `format` - json/text (default: json)
+- `models.keep_cache_on_uninstall` - Cache retention (default: true)
+- `updates.mode` - Rolling vs. pinned (default: rolling)
+
+**Validation** (`validation.go`):
+- Strict schema validation with path-based error reporting
+- Range checks for thresholds (0-100%)
+- Minimum values for timing parameters
+- MAC address format validation
+- Enum validation for runtime/profile/log level/format/update mode
+
+**CLI Commands**:
+- `aistack config test [path]` - Test configuration file for validity
+  - Without path: Tests system + user merge
+  - With path: Tests specific file
+- Exit code 0 if valid, non-zero if validation fails
+
+**Testing Pattern**:
+- Table-driven tests for defaults, validation, and merging
+- Temporary directories for file-based tests
+- 26 comprehensive tests covering all validation rules
+
+**Usage**:
+```bash
+# Test default configuration
+aistack config test
+
+# Test specific file
+aistack config test /path/to/config.yaml
+
+# Test example config
+aistack config test config.yaml.example
+```
 
 ## Important Patterns
 
@@ -739,21 +1219,134 @@ Key configuration sections (from EP-018):
 
 **Coverage Target**: ≥80% for core packages (`internal/`)
 
-## CI/CD Expectations
+## CI/CD Pipeline (EP-019)
 
-Based on EP-019:
-- GitHub Actions workflow for lint/test/build
-- Race detector enabled
-- Coverage gates enforced
-- Artifact upload for snapshot builds
-- Semantic versioning with conventional commits
+The CI/CD subsystem provides automated testing, building, and releasing with quality gates:
 
-## Documentation Structure
+**CI Workflow** (`.github/workflows/ci.yml`):
+- **Lint Job**: golangci-lint with 5m timeout
+- **Test Job**:
+  - Race detector enabled (`-race`)
+  - Coverage gate: ≥80% for `internal/` packages
+  - Coverage report generation with `internal_coverage.txt`
+  - CI report artifact (`ci_report.json`) with job metadata
+  - Codecov integration for coverage tracking
+- **Build Job**:
+  - Static binary build (`CGO_ENABLED=0`)
+  - Artifact upload (30-day retention)
+  - Runs only after lint and test pass
+
+**Release Workflow** (`.github/workflows/release.yml`):
+- Triggered on version tags (`v*.*.*`)
+- Build with version information embedded
+- Checksum generation (SHA256)
+- Automated changelog from git commits
+- GitHub Release creation with:
+  - Binary (`aistack`)
+  - Tarball (`aistack-linux-amd64.tar.gz`)
+  - Checksums for verification
+  - Release report artifact (365-day retention)
+
+**CI Report Format** (`ci_report.json`):
+```json
+{
+  "job": "test",
+  "status": "success",
+  "timestamp": "2025-11-05T17:00:00Z",
+  "coverage": {
+    "total": 85.2,
+    "threshold": 80,
+    "passed": true
+  },
+  "race_detector": "enabled",
+  "go_version": "1.22"
+}
+```
+
+**Coverage Gate Implementation**:
+- Extracts coverage for `internal/` packages only
+- Calculates average coverage across core packages
+- Fails build if below 80% threshold
+- Reports detailed per-file coverage in artifact
+
+**Release Process**:
+1. Create and push version tag: `git tag v1.0.0 && git push origin v1.0.0`
+2. Release workflow automatically:
+   - Builds binary with version embedded
+   - Generates checksums
+   - Creates changelog from commits
+   - Publishes GitHub Release with all artifacts
+
+**Quality Gates**:
+- Linting must pass (golangci-lint)
+- All tests must pass with race detector
+- Core packages must maintain ≥80% coverage
+- Build must succeed on linux/amd64
+
+**Semantic Versioning**:
+- Format: `vMAJOR.MINOR.PATCH`
+- Follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+- Conventional commit messages encouraged
+
+**Artifact Retention**:
+- CI reports: 90 days
+- Coverage reports: 30 days
+- Build artifacts: 30 days
+- Release reports: 365 days
+
+## Documentation Structure (EP-022)
+
+### User-Facing Documentation
+
+- `README.md` - Quick start guide, installation, basic commands
+  - Production installation steps (Ubuntu 24.04)
+  - Goal: Services green in ≤10 minutes
+  - Development build instructions
+  - Troubleshooting quick reference
+
+- `docs/OPERATIONS.md` - Operations playbook for administrators
+  - Service management procedures
+  - Comprehensive troubleshooting guide
+  - Update & rollback workflows
+  - Backup & recovery procedures
+  - Performance tuning
+  - Common error patterns with solutions
+  - Emergency procedures
+
+- `docs/POWER_AND_WOL.md` - Power management & Wake-on-LAN guide
+  - Idle detection and auto-suspend setup
+  - Wake-on-LAN configuration and testing
+  - Detailed troubleshooting for suspend/wake issues
+  - Configuration tuning recommendations
+  - Advanced usage scenarios
+  - FAQ section
+
+- `config.yaml.example` - Complete configuration template
+  - All supported options with comments
+  - Default values documented
+  - Location: `/etc/aistack/config.yaml` or `~/.aistack/config.yaml`
+
+- `versions.lock.example` - Version pinning template
+  - Digest and tag format examples
+  - Usage notes and best practices
+  - Location: `/etc/aistack/versions.lock`
+
+### Developer Documentation
 
 - `AGENTS.md` - Contributor guidelines and coding standards
+- `CLAUDE.md` - AI-assisted development context (this file)
 - `status.md` - Work session log
 - `docs/features/epics.md` - Product direction and epic definitions
 - `docs/cheat-sheets/` - Quick reference guides (Go, Makefile, networking, etc.)
+
+### Documentation Principles (from EP-022)
+
+- **Pragmatic**: Focus on getting things done, not comprehensive theory
+- **Tested**: All commands and procedures have been verified
+- **Structured**: Clear sections, table of contents, easy navigation
+- **Searchable**: Keywords and error messages included for easy searching
+- **Maintained**: Documentation updated alongside code changes
+- **No Secrets**: Examples use placeholders, never real credentials
 
 ## Commit Guidelines
 
