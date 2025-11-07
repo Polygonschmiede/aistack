@@ -93,7 +93,7 @@ func (s *SecretStore) RetrieveSecret(name string) ([]byte, error) {
 	}
 
 	// Verify permissions before decrypting
-	if err := s.verifyPermissions(secretPath); err != nil {
+	if permErr := s.verifyPermissions(secretPath); permErr != nil {
 		s.logger.Warn("secrets.permissions.warning", "Secret file permissions should be 600", map[string]interface{}{
 			"path": secretPath,
 		})
@@ -124,10 +124,10 @@ func (s *SecretStore) DeleteSecret(name string) error {
 	}
 
 	// Update index
-	if err := s.removeFromIndex(name); err != nil {
+	if indexErr := s.removeFromIndex(name); indexErr != nil {
 		s.logger.Warn("secrets.index.remove_failed", "Failed to remove from secrets index", map[string]interface{}{
 			"name":  name,
-			"error": err.Error(),
+			"error": indexErr.Error(),
 		})
 	}
 
