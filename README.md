@@ -37,7 +37,7 @@ aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI,
 
 ```bash
 # Download latest release (replace VERSION with actual version)
-wget https://github.com/yourorg/aistack/releases/download/v0.1.0/aistack-linux-amd64.tar.gz
+wget https://github.com/polygonschmiede/aistack/releases/download/v0.1.0/aistack-linux-amd64.tar.gz
 
 # Extract
 tar -xzf aistack-linux-amd64.tar.gz
@@ -87,7 +87,7 @@ See [OPERATIONS.md](docs/OPERATIONS.md) for detailed troubleshooting playbooks.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/aistack.git
+git clone https://github.com/polygonschmiede/aistack.git
 cd aistack
 
 # Build
