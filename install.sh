@@ -353,6 +353,32 @@ deploy_udev_rules() {
     fi
 }
 
+# Deploy systemd-tmpfiles configuration for RAPL permissions
+deploy_tmpfiles() {
+    log_info "Deploying systemd-tmpfiles configuration..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local tmpfiles_source="$script_dir/assets/tmpfiles.d/aistack-rapl.conf"
+    local tmpfiles_target="/etc/tmpfiles.d/aistack-rapl.conf"
+
+    if [[ ! -f "$tmpfiles_source" ]]; then
+        log_warn "tmpfiles config not found: $tmpfiles_source"
+        return
+    fi
+
+    cp "$tmpfiles_source" "$tmpfiles_target"
+    chmod 644 "$tmpfiles_target"
+    log_info "✓ Deployed tmpfiles config: $(basename "$tmpfiles_target")"
+
+    # Apply tmpfiles configuration immediately
+    if command -v systemd-tmpfiles &> /dev/null; then
+        systemd-tmpfiles --create "$tmpfiles_target" || {
+            log_warn "Failed to apply tmpfiles config (non-critical)"
+        }
+        log_info "✓ Applied tmpfiles configuration"
+    fi
+}
+
 # Create aistack user and group
 create_aistack_user() {
     log_info "Creating aistack user and group..."
@@ -508,6 +534,7 @@ main() {
     deploy_systemd_units
     deploy_logrotate
     deploy_udev_rules
+    deploy_tmpfiles
 
     echo ""
     log_info "========================================="
