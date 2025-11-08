@@ -1,5 +1,41 @@
 # Work Status Log
 
+## 2025-11-08 14:30 CET — Production Issues: RAPL Permissions & Idle Detection
+
+- **Aufgabe:** Fix RAPL permission denied errors und investigate idle state reset issue
+- **Vorgehen:**
+  - **RAPL Permission Fix:**
+    - Root Cause: udev rule mit `ACTION=="add|change"` triggert nicht für bereits existierende sysfs Dateien
+    - Solution 1: udev rule korrigiert (ACTION filter entfernt)
+    - Solution 2: systemd-tmpfiles.d config hinzugefügt (`assets/tmpfiles.d/aistack-rapl.conf`)
+    - install.sh updated: `deploy_tmpfiles()` function zum Deployen der tmpfiles config
+    - Applies permissions immediately und persistiert über Reboots
+  - **Troubleshooting Documentation:**
+    - `docs/TROUBLESHOOTING.md` erstellt mit comprehensive troubleshooting guide
+    - Covers:
+      * RAPL permission issues (3 fix options: reinstall, tmpfiles deploy, manual)
+      * Idle state reset problem (multiple instances, CPU spikes, tmux)
+      * GPU lock issues
+      * Common problems (Docker, CUDA, health checks)
+      * Debug mode activation
+  - **RAPL Fix Instructions:**
+    - `RAPL_FIX_INSTRUCTIONS.md` für User erstellt (German)
+    - 3 Optionen: Reinstall, tmpfiles only, manual permissions
+    - Verification steps und troubleshooting
+  - **Dependency Fix:**
+    - Build failure wegen charmbracelet/x dependency incompatibility
+    - cellbuf v0.0.13 inkompatibel mit ansi v0.11.0
+    - Fixed: ansi downgraded to v0.10.0
+- **Status:** ✅ Completed
+  - All tests passing (125s services, alle anderen packages <5s)
+  - Binary builds successfully
+  - RAPL fix ready for deployment auf Ubuntu
+  - User kann eine von 3 Fix-Optionen wählen
+- **Commits:**
+  - `4b92966` - fix: RAPL permissions with tmpfiles.d and troubleshooting guide
+  - `2639bbb` - fix: downgrade charmbracelet/x/ansi to v0.10.0 for cellbuf compatibility
+- **Datum:** 2025-11-08 14:30 CET
+
 ## 2025-11-06 16:00 CET — EP-022 Implementation (Documentation & Ops Playbooks)
 - **Aufgabe:** EP-022 "Documentation & Ops Playbooks" vollständig implementieren mit Story T-036.
 - **Vorgehen:**
