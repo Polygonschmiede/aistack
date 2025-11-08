@@ -11,17 +11,38 @@ GO_BUILD_FLAGS=-tags netgo
 CGO_ENABLED=0
 LDFLAGS=-ldflags "-s -w"
 
+# CUDA build flags (for GPU support)
+CUDA_BUILD_FLAGS=-tags "netgo,cuda"
+CUDA_CGO_ENABLED=1
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Available targets:'
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build the binary
-	@echo "Building $(BINARY_NAME)..."
+build: ## Build the binary (no GPU support)
+	@echo "Building $(BINARY_NAME) (no GPU support)..."
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=$(CGO_ENABLED) go build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)
 	@echo "Binary built: $(BUILD_DIR)/$(BINARY_NAME)"
+
+build-cuda: ## Build the binary with CUDA/GPU support (requires NVIDIA CUDA Toolkit)
+	@echo "Building $(BINARY_NAME) with CUDA support..."
+	@echo "Checking for NVIDIA GPU..."
+	@if ! command -v nvidia-smi >/dev/null 2>&1; then \
+		echo "ERROR: nvidia-smi not found. Install NVIDIA drivers first."; \
+		exit 1; \
+	fi
+	@echo "Checking for CUDA Toolkit..."
+	@if [ ! -d "/usr/local/cuda" ] && [ ! -d "/usr/lib/cuda" ]; then \
+		echo "ERROR: CUDA Toolkit not found at /usr/local/cuda or /usr/lib/cuda"; \
+		echo "Install: sudo apt install nvidia-cuda-toolkit"; \
+		exit 1; \
+	fi
+	@mkdir -p $(BUILD_DIR)
+	CGO_ENABLED=$(CUDA_CGO_ENABLED) go build $(CUDA_BUILD_FLAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(CMD_DIR)
+	@echo "Binary built with CUDA support: $(BUILD_DIR)/$(BINARY_NAME)"
 
 test: ## Run unit tests
 	@echo "Running tests..."
