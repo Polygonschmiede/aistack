@@ -2,8 +2,8 @@
 # Allows the aistack agent to read Intel RAPL energy counters for CPU power measurement
 # These files provide energy consumption data in microjoules
 
-# Intel RAPL: Allow read access to energy counters
-SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", ACTION=="add|change", MODE="0644"
+# Intel RAPL: Allow read access to energy counters (no ACTION filter for sysfs files)
+SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", MODE="0644"
 
 # Alternative: Direct path-based rule for all RAPL energy files
 KERNEL=="energy_uj", SUBSYSTEM=="powercap", MODE="0644"
