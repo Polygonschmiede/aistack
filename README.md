@@ -18,8 +18,8 @@ aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI,
 
 - **OS**: Ubuntu 24.04 LTS (x86_64)
 - **Runtime**: Docker (default) or Podman (best-effort support)
+- **Build**: Go 1.22+ (required for building from source)
 - **Optional**: NVIDIA GPU with compatible drivers for GPU workloads
-- **Go**: 1.22+ (for development)
 
 ## Quick Start
 
@@ -29,19 +29,25 @@ aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI,
 
 **Prerequisites**:
 - Fresh Ubuntu 24.04 LTS installation
+- Go 1.22+ installed (`sudo apt install golang-go`)
 - Docker installed (`sudo apt install docker.io docker-compose-v2`)
 - User added to docker group (`sudo usermod -aG docker $USER`, then logout/login)
 - For GPU support: NVIDIA drivers installed (`nvidia-smi` should work)
 
-**Step 1: Download and Install**
+**Step 1: Download and Build**
 
 ```bash
-# Download latest release (replace VERSION with actual version)
-wget https://github.com/polygonschmiede/aistack/releases/download/v0.1.0/aistack-linux-amd64.tar.gz
+# Download source from latest release
+wget https://github.com/polygonschmiede/aistack/archive/refs/tags/v0.1.0.tar.gz
+tar -xzf v0.1.0.tar.gz
+cd aistack-0.1.0
 
-# Extract
-tar -xzf aistack-linux-amd64.tar.gz
+# OR clone from repository
+git clone https://github.com/polygonschmiede/aistack.git
 cd aistack
+
+# Build binary
+make build
 
 # Install system-wide (requires sudo)
 sudo ./install.sh
@@ -49,6 +55,8 @@ sudo ./install.sh
 # Verify installation
 aistack version
 ```
+
+> **Note**: Precompiled binaries will be available in future releases. Currently, you need Go 1.22+ installed to build from source.
 
 **Step 2: Install Services**
 
@@ -84,6 +92,11 @@ aistack health
 See [OPERATIONS.md](docs/OPERATIONS.md) for detailed troubleshooting playbooks.
 
 ### Development Build
+Install beforehand 
+```bash
+sudo apt update
+sudo apt install golang-go make docker
+```
 
 ```bash
 # Clone the repository
