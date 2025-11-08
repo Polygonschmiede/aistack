@@ -61,19 +61,14 @@ func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Log
 			return fmt.Errorf("failed to set OLLAMA_BASE_URL: %w", err)
 		}
 
-		// Acquire GPU lock
-		// Story T-021: GPU-Mutex (Dateisperre + Lease)
-		if err := gpuLock.Acquire(gpulock.HolderOpenWebUI); err != nil {
-			return fmt.Errorf("failed to acquire GPU lock: %w", err)
-		}
+		// Note: OpenWebUI does NOT acquire GPU lock
+		// Only backend services (Ollama, LocalAI) acquire GPU lock
+		// OpenWebUI is just a web UI that communicates with backends via HTTP
 
 		return nil
 	})
 
-	base.SetPostStopHook(func() error {
-		// Release GPU lock
-		return gpuLock.Release(gpulock.HolderOpenWebUI)
-	})
+	// No post-stop hook needed - OpenWebUI doesn't hold GPU lock
 
 	return service
 }
