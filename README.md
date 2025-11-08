@@ -92,7 +92,7 @@ aistack health
 See [OPERATIONS.md](docs/OPERATIONS.md) for detailed troubleshooting playbooks.
 
 ### Development Build
-Install beforehand 
+Install beforehand
 ```bash
 sudo apt update
 sudo apt install golang-go make docker
@@ -103,8 +103,12 @@ sudo apt install golang-go make docker
 git clone https://github.com/polygonschmiede/aistack.git
 cd aistack
 
-# Build
+# Build (no GPU support)
 make build
+
+# OR: Build with GPU/CUDA support (requires nvidia-cuda-toolkit)
+sudo apt install nvidia-cuda-toolkit
+make build-cuda
 
 # Run locally (no installation)
 ./dist/aistack
@@ -113,11 +117,14 @@ make build
 make run
 ```
 
+**Note**: The `install.sh` script automatically detects NVIDIA GPU and builds with CUDA support if available.
+
 ### Development Commands
 
 ```bash
 make help          # Show all available commands
-make build         # Build binary
+make build         # Build binary (no GPU support)
+make build-cuda    # Build binary with CUDA/GPU support
 make test          # Run tests
 make lint          # Run linters
 make coverage      # Generate coverage report

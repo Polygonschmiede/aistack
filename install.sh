@@ -213,11 +213,62 @@ install_docker() {
     fi
 }
 
+# Detect GPU and build with appropriate flags
+build_aistack_binary() {
+    log_info "Building aistack binary..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Check if binary already exists
+    if [[ -f "$script_dir/dist/aistack" ]]; then
+        log_info "✓ Binary already exists: $script_dir/dist/aistack"
+        return
+    fi
+
+    # Detect NVIDIA GPU
+    if command -v nvidia-smi &> /dev/null; then
+        log_info "NVIDIA GPU detected, attempting CUDA build..."
+
+        # Check for CUDA toolkit
+        if [[ -d "/usr/local/cuda" ]] || [[ -d "/usr/lib/cuda" ]] || command -v nvcc &> /dev/null; then
+            log_info "CUDA Toolkit found, building with GPU support..."
+            if command -v make &> /dev/null; then
+                (cd "$script_dir" && make build-cuda) || {
+                    log_warn "CUDA build failed, falling back to non-GPU build"
+                    (cd "$script_dir" && make build)
+                }
+            else
+                log_warn "make not found, falling back to basic build"
+                (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
+            fi
+        else
+            log_info "CUDA Toolkit not found, building without GPU support"
+            log_info "For GPU support, install: sudo apt install nvidia-cuda-toolkit"
+            (cd "$script_dir" && make build) || {
+                (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
+            }
+        fi
+    else
+        log_info "No NVIDIA GPU detected, building without GPU support"
+        if command -v make &> /dev/null; then
+            (cd "$script_dir" && make build)
+        else
+            (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
+        fi
+    fi
+
+    log_info "✓ Binary built successfully"
+}
+
 # Install or update the aistack CLI binary under /usr/local/bin
 install_cli_binary() {
     log_info "Installing aistack CLI binary..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Build if binary doesn't exist
+    build_aistack_binary
+
     local candidates=(
         "$script_dir/dist/aistack"
         "$script_dir/../dist/aistack"
@@ -233,8 +284,8 @@ install_cli_binary() {
     done
 
     if [[ -z "$source" ]]; then
-        log_warn "aistack binary not found in dist/. Please build via 'make build' before running install.sh"
-        return
+        log_error "aistack binary not found after build. Please check build errors."
+        exit 1
     fi
 
     install -m 0755 "$source" /usr/local/bin/aistack
@@ -263,26 +314,41 @@ CONFIG
     log_info "✓ Created default config at $config_path"
 }
 
-# Deploy udev rules for persistent Wake-on-LAN configuration
+# Deploy udev rules for persistent Wake-on-LAN configuration and RAPL permissions
 deploy_udev_rules() {
-    log_info "Deploying udev rules for Wake-on-LAN..."
+    log_info "Deploying udev rules..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local udev_source="$script_dir/assets/udev/70-aistack-wol.rules"
-    local udev_target="/etc/udev/rules.d/70-aistack-wol.rules"
 
-    if [[ ! -f "$udev_source" ]]; then
-        log_warn "Udev rule template not found: $udev_source"
-        return
+    # Deploy WoL rule
+    local wol_source="$script_dir/assets/udev/70-aistack-wol.rules"
+    local wol_target="/etc/udev/rules.d/70-aistack-wol.rules"
+
+    if [[ -f "$wol_source" ]]; then
+        cp "$wol_source" "$wol_target"
+        chmod 644 "$wol_target"
+        log_info "✓ Deployed udev rule: $(basename "$wol_target")"
+    else
+        log_warn "WoL udev rule not found: $wol_source"
     fi
 
-    cp "$udev_source" "$udev_target"
-    chmod 644 "$udev_target"
-    log_info "✓ Deployed udev rule: $(basename "$udev_target")"
+    # Deploy RAPL rule (for CPU power monitoring)
+    local rapl_source="$script_dir/assets/udev/80-aistack-rapl.rules"
+    local rapl_target="/etc/udev/rules.d/80-aistack-rapl.rules"
 
+    if [[ -f "$rapl_source" ]]; then
+        cp "$rapl_source" "$rapl_target"
+        chmod 644 "$rapl_target"
+        log_info "✓ Deployed udev rule: $(basename "$rapl_target")"
+    else
+        log_warn "RAPL udev rule not found: $rapl_source"
+    fi
+
+    # Reload udev rules
     if command -v udevadm &> /dev/null; then
         udevadm control --reload-rules
         udevadm trigger --subsystem-match=net || true
+        udevadm trigger --subsystem-match=powercap || true
         log_info "✓ Reloaded udev rules"
     fi
 }
