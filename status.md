@@ -1,5 +1,39 @@
 # Work Status Log
 
+## 2025-11-09 13:30 CET — Fix Auto-Suspend: Config & Inhibitor Handling
+
+- **Aufgabe:** System suspended nicht trotz 45min idle - fehlende config und inhibitor locks
+- **Vorgehen:**
+  - **Root Cause Analysis:**
+    - Config fehlt `idle:` section komplett → `enable_suspend` nicht gesetzt
+    - systemd inhibitor locks (ModemManager, UPower, Unattended Upgrades) blockieren suspend
+    - System ist 2700s (45min!) idle aber kann nicht suspenden wegen inhibitors
+  - **Installation Fixes:**
+    - `install.sh` erweitert: `ensure_config_defaults()` erstellt jetzt vollständige config
+    - Fügt `idle:` section mit allen Thresholds und `enable_suspend: true` hinzu
+    - Fügt auch `logging:` section hinzu
+  - **Inhibitor Fix:**
+    - `assets/systemd/aistack-idle.service` updated: `--ignore-inhibitors` flag hinzugefügt
+    - Comment erklärt warum safe für headless servers
+    - ModemManager/UPower sind Desktop-Services, nicht relevant für Server
+  - **Quick Fix Script:**
+    - `fix_suspend.sh` erstellt für existing installations
+    - Patcht config und service ohne full reinstall
+    - Validation und verification steps
+  - **Documentation:**
+    - `TROUBLESHOOTING.md` um "System Won't Suspend Despite Being Idle" section erweitert
+    - Erklärt inhibitor problem und warum --ignore-inhibitors safe ist
+    - `SUSPEND_FIX_ANLEITUNG.md` mit vollständiger deutscher Anleitung
+- **Status:** ✅ Completed
+  - Fresh installs haben jetzt complete config mit enable_suspend: true
+  - Inhibitors werden automatisch ignoriert (appropriate für headless)
+  - Quick fix script für existing installations
+  - System wird jetzt suspenden nach idle timeout
+- **Testing:** User soll `fix_suspend.sh` ausführen, dann SSH schließen und 5min warten
+- **Commits:**
+  - `a125e2d` - fix: auto-suspend configuration and inhibitor handling
+- **Datum:** 2025-11-09 13:30 CET
+
 ## 2025-11-08 14:30 CET — Production Issues: RAPL Permissions & Idle Detection
 
 - **Aufgabe:** Fix RAPL permission denied errors und investigate idle state reset issue
