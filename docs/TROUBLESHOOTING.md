@@ -70,6 +70,63 @@ Instead of:
 
 ---
 
+## System Won't Suspend Despite Being Idle
+
+### Symptoms
+- System is idle for >5 minutes (`idle_for_s` > 300)
+- Gating reasons show "inhibit"
+- Logs show: `"suspend_skipped","gating_reasons":["inhibit"]`
+- Server doesn't suspend even after closing SSH
+
+### Cause
+**systemd inhibitor locks** from system services prevent suspend:
+- `ModemManager` - Modem management (not needed on servers)
+- `UPower` - Power device polling (desktop-oriented)
+- `Unattended Upgrades` - Package updates in progress
+
+### Solution
+
+The default installation now **automatically ignores these inhibitors** for headless servers.
+
+**If you have an old installation**, apply the fix:
+
+```bash
+# Download and run fix script
+cd ~/aistack
+git pull
+sudo bash fix_suspend.sh
+
+# Or update manually:
+sudo sed -i 's|idle-check|idle-check --ignore-inhibitors|' /etc/systemd/system/aistack-idle.service
+sudo systemctl daemon-reload
+sudo systemctl restart aistack-agent
+```
+
+**Why is this safe?**
+- On a **headless server**, ModemManager and UPower inhibitors are not relevant
+- The system still respects **SSH session** inhibitors (won't suspend while you're logged in)
+- Auto-suspend only triggers when truly idle (CPU < 10%, GPU < 5%, for 5+ minutes)
+
+**To disable ignore-inhibitors** (if you want strict inhibitor respect):
+```bash
+sudo nano /etc/systemd/system/aistack-idle.service
+# Remove --ignore-inhibitors from ExecStart line
+sudo systemctl daemon-reload
+```
+
+### Verification
+
+Check that inhibitors are being ignored:
+```bash
+# Should show --ignore-inhibitors
+grep ExecStart /etc/systemd/system/aistack-idle.service
+
+# Check logs
+sudo journalctl -u aistack-idle.service -n 20
+```
+
+---
+
 ## Idle State Constantly Resetting
 
 ### Symptoms

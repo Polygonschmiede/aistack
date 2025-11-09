@@ -10,7 +10,9 @@ User=aistack
 Group=aistack
 
 # Execute idle check
-ExecStart=/usr/local/bin/aistack idle-check
+# --ignore-inhibitors: Ignore systemd inhibitor locks (ModemManager, UPower, etc.)
+# This is appropriate for headless servers where system services shouldn't block suspend
+ExecStart=/usr/local/bin/aistack idle-check --ignore-inhibitors
 
 # Security hardening
 NoNewPrivileges=true

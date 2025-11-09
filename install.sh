@@ -305,8 +305,23 @@ ensure_config_defaults() {
 container_runtime: ${CONTAINER_RUNTIME:-docker}
 profile: standard-gpu
 gpu_lock: true
+
+# Power Management & Idle Detection
+idle:
+  window_seconds: 60
+  idle_timeout_seconds: 300
+  cpu_threshold_pct: 10.0
+  gpu_threshold_pct: 5.0
+  min_samples_required: 6
+  enable_suspend: true
+
+# Update Policy
 updates:
   mode: rolling
+
+# Logging
+logging:
+  level: info
 CONFIG
 
     chown root:aistack "$config_path"
