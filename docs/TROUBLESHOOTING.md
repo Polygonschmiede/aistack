@@ -78,34 +78,54 @@ Instead of:
 - Logs show: `"suspend_skipped","gating_reasons":["inhibit"]`
 - Server doesn't suspend even after closing SSH
 
-### Cause
-**systemd inhibitor locks** from system services prevent suspend:
+### Root Causes
+
+**1. systemd inhibitor locks** from system services prevent suspend:
 - `ModemManager` - Modem management (not needed on servers)
 - `UPower` - Power device polling (desktop-oriented)
 - `Unattended Upgrades` - Package updates in progress
 
+**2. State persistence bug (FIXED in 5b6a111)**:
+- Executor was adding "inhibit" to state.GatingReasons
+- Modified state was saved to disk
+- On next load, "inhibit" persisted even with `--ignore-inhibitors`
+- **Fix**: state.go Load() now removes "inhibit" on load (it's a runtime check, not a state property)
+
 ### Solution
 
-The default installation now **automatically ignores these inhibitors** for headless servers.
+The latest version includes **both fixes**:
+1. Default installation uses `--ignore-inhibitors` for headless servers
+2. State loading automatically removes persisted "inhibit" gating reason
 
-**If you have an old installation**, apply the fix:
+**If you have an old installation**, update and apply fixes:
 
 ```bash
-# Download and run fix script
+# Download latest code with state persistence fix
 cd ~/aistack
 git pull
+
+# Rebuild binary with fix
+make build
+
+# Apply configuration fixes
 sudo bash fix_suspend.sh
 
-# Or update manually:
-sudo sed -i 's|idle-check|idle-check --ignore-inhibitors|' /etc/systemd/system/aistack-idle.service
-sudo systemctl daemon-reload
+# Reinstall binary
+sudo cp dist/aistack /usr/local/bin/aistack
+
+# Restart services
 sudo systemctl restart aistack-agent
+sudo systemctl restart aistack-idle.service
+
+# Clear old state (optional - will be cleaned automatically on next load)
+sudo rm /var/lib/aistack/idle_state.json
 ```
 
 **Why is this safe?**
 - On a **headless server**, ModemManager and UPower inhibitors are not relevant
 - The system still respects **SSH session** inhibitors (won't suspend while you're logged in)
 - Auto-suspend only triggers when truly idle (CPU < 10%, GPU < 5%, for 5+ minutes)
+- "inhibit" check runs fresh on each idle-check (not persisted in state)
 
 **To disable ignore-inhibitors** (if you want strict inhibitor respect):
 ```bash
@@ -116,13 +136,20 @@ sudo systemctl daemon-reload
 
 ### Verification
 
-Check that inhibitors are being ignored:
+Check that inhibitors are being ignored and state is clean:
 ```bash
 # Should show --ignore-inhibitors
 grep ExecStart /etc/systemd/system/aistack-idle.service
 
-# Check logs
-sudo journalctl -u aistack-idle.service -n 20
+# Check current state (should NOT have "inhibit" after loading)
+cat /var/lib/aistack/idle_state.json | grep gating_reasons
+
+# Check logs - should see "Ignoring systemd inhibitors"
+sudo journalctl -u aistack-idle.service -n 20 | grep inhibit
+
+# Wait 5 minutes after closing SSH, then check if suspended
+# (from another machine)
+ping <server-ip>  # Should fail after suspend
 ```
 
 ---

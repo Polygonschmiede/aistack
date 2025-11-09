@@ -70,12 +70,27 @@ func (sm *StateManager) Load() (IdleState, error) {
 		return IdleState{}, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
 
+	// Remove "inhibit" from gating reasons - it's a runtime check, not a state property
+	// The inhibitor check is performed fresh on each idle-check run
+	state.GatingReasons = removeReason(state.GatingReasons, GatingReasonInhibit)
+
 	sm.logger.Debug("idle.state.loaded", "Idle state loaded", map[string]interface{}{
 		"path":   sm.filePath,
 		"status": state.Status,
 	})
 
 	return state, nil
+}
+
+// removeReason removes a specific reason from the gating reasons list
+func removeReason(reasons []string, reason string) []string {
+	result := make([]string, 0, len(reasons))
+	for _, r := range reasons {
+		if r != reason {
+			result = append(result, r)
+		}
+	}
+	return result
 }
 
 // Delete removes the state file

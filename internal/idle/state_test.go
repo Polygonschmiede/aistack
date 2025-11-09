@@ -168,3 +168,114 @@ func TestStateManager_AtomicWrite(t *testing.T) {
 		}
 	}
 }
+
+func TestStateManager_RemovesInhibitOnLoad(t *testing.T) {
+	logger := logging.NewLogger(logging.LevelInfo)
+	tempFile := filepath.Join(os.TempDir(), "test_inhibit_removal_state.json")
+	defer os.Remove(tempFile)
+
+	manager := NewStateManager(tempFile, logger)
+
+	// Create state with "inhibit" gating reason (simulating what executor does)
+	state := IdleState{
+		Status:           StatusIdle,
+		IdleForSeconds:   900,
+		ThresholdSeconds: 300,
+		CPUIdlePct:       95.0,
+		GPUIdlePct:       98.0,
+		GatingReasons:    []string{GatingReasonInhibit, GatingReasonBelowTimeout},
+		LastUpdate:       time.Now(),
+	}
+
+	// Save state with "inhibit"
+	if err := manager.Save(state); err != nil {
+		t.Fatalf("Failed to save state: %v", err)
+	}
+
+	// Load state - "inhibit" should be removed
+	loaded, err := manager.Load()
+	if err != nil {
+		t.Fatalf("Failed to load state: %v", err)
+	}
+
+	// Verify "inhibit" was removed
+	for _, reason := range loaded.GatingReasons {
+		if reason == GatingReasonInhibit {
+			t.Error("Expected 'inhibit' gating reason to be removed on load, but it's still present")
+		}
+	}
+
+	// Verify other gating reasons are preserved
+	hasExpectedReason := false
+	for _, reason := range loaded.GatingReasons {
+		if reason == GatingReasonBelowTimeout {
+			hasExpectedReason = true
+		}
+	}
+
+	if !hasExpectedReason {
+		t.Error("Expected 'below_timeout' gating reason to be preserved, but it was removed")
+	}
+
+	// Verify count is correct (1 reason left instead of 2)
+	if len(loaded.GatingReasons) != 1 {
+		t.Errorf("Expected 1 gating reason after removing 'inhibit', got %d: %v",
+			len(loaded.GatingReasons), loaded.GatingReasons)
+	}
+}
+
+func TestRemoveReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		remove   string
+		expected []string
+	}{
+		{
+			name:     "remove single occurrence",
+			input:    []string{"inhibit", "below_timeout"},
+			remove:   "inhibit",
+			expected: []string{"below_timeout"},
+		},
+		{
+			name:     "remove from middle",
+			input:    []string{"high_cpu", "inhibit", "below_timeout"},
+			remove:   "inhibit",
+			expected: []string{"high_cpu", "below_timeout"},
+		},
+		{
+			name:     "remove non-existent",
+			input:    []string{"high_cpu", "below_timeout"},
+			remove:   "inhibit",
+			expected: []string{"high_cpu", "below_timeout"},
+		},
+		{
+			name:     "remove from empty",
+			input:    []string{},
+			remove:   "inhibit",
+			expected: []string{},
+		},
+		{
+			name:     "remove only element",
+			input:    []string{"inhibit"},
+			remove:   "inhibit",
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := removeReason(tt.input, tt.remove)
+
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected length %d, got %d", len(tt.expected), len(result))
+			}
+
+			for i, expected := range tt.expected {
+				if i >= len(result) || result[i] != expected {
+					t.Errorf("Expected result[%d] = %s, got %v", i, expected, result)
+				}
+			}
+		})
+	}
+}
