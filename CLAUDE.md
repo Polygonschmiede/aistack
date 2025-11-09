@@ -44,17 +44,22 @@ The project follows an epic-based development approach documented in `docs/featu
 11. **EP-011**: GPU Lock & Concurrency Control
 12. **EP-012**: Model Management & Caching
 
-### Planned Module Structure
-The codebase is designed to grow into these modules (currently minimal):
+### Current Module Structure
 
-- `cmd/aistack/` - CLI entry point
-- `internal/installer/` - Bootstrap and system setup logic
-- `internal/services/` - Container service lifecycle management
-- `internal/power/` - Power monitoring and idle detection
-- `internal/metrics/` - GPU/CPU metrics collection (NVML, RAPL)
-- `internal/diag/` - Diagnostics and health checks
-- `internal/update/` - Update and rollback mechanisms
-- `pkg/` - Reusable packages (if needed)
+- `cmd/aistack/` — CLI entry point and command wiring (agent, install, services, idle, WoL, diagnostics).
+- `internal/agent/` — Background agent runtime coordinating metrics + idle loops.
+- `internal/config/` & `internal/configdir/` — Configuration parsing, defaults, and filesystem paths.
+- `internal/services/` — Compose lifecycle management (install/update/remove/backends).
+- `internal/models/` — Model inventory/index shared between runtimes.
+- `internal/metrics/` — CPU/GPU metrics collection, RAPL integration, JSONL writer.
+- `internal/idle/` — Sliding window idle engine, gating reasons, suspend executor.
+- `internal/gpulock/` — GPU lock orchestration for exclusive workloads.
+- `internal/gpu/` — Hardware detection, NVML helpers, toolkit detection.
+- `internal/wol/` — Wake-on-LAN setup, relay server, CLI helpers.
+- `internal/logging/` — Structured JSON logger (stderr + file).
+- `internal/diag/` — Diagnostic bundle creation with redaction.
+- `internal/secrets/` — AES-GCM encrypted secret store.
+- `internal/tui/` — Bubble Tea model/view for interactive dashboard.
 
 ### Key Technical Decisions
 

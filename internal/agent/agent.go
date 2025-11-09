@@ -292,6 +292,10 @@ func IdleCheck(logger *logging.Logger, ignoreInhibitors bool) error {
 	stateManager := idle.NewStateManager(idleConfig.StateFilePath, logger)
 
 	state, err := stateManager.Load()
+
+	if ignoreInhibitors {
+		state.GatingReasons = removeGatingReason(state.GatingReasons, idle.GatingReasonInhibit)
+	}
 	if err != nil {
 		logger.Warn("idle.state_load_failed", "Failed to load idle state", map[string]interface{}{
 			"error": err.Error(),

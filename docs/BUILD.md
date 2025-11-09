@@ -30,7 +30,7 @@ go version
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/aistack.git
+git clone https://github.com/polygonschmiede/aistack.git
 cd aistack
 
 # Download dependencies
