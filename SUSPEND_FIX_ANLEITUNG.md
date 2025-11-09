@@ -218,10 +218,25 @@ Das ist normal wenn:
 ## Commits
 
 ```
+5b6a111 - fix: remove persisted 'inhibit' gating reason on state load
 a125e2d - fix: auto-suspend configuration and inhibitor handling
 2639bbb - fix: downgrade charmbracelet/x/ansi to v0.10.0 for cellbuf compatibility
 4b92966 - fix: RAPL permissions with tmpfiles.d and troubleshooting guide
 ```
+
+## Critical Bug Fix (5b6a111)
+
+**Problem**: System blieb idle für 15+ Minuten ohne suspend, trotz `--ignore-inhibitors` flag.
+
+**Root Cause**: Der Executor fügte "inhibit" zum state hinzu (executor.go:71-72), dieser state wurde gespeichert. Beim nächsten Laden war "inhibit" schon drin, selbst mit `--ignore-inhibitors`!
+
+**Solution**: "inhibit" ist ein **RUNTIME check**, kein **STATE property**! Der state wird jetzt beim Laden bereinigt (state.go Load() entfernt "inhibit" automatisch).
+
+**Was passiert jetzt**:
+1. idle-check lädt state aus idle_state.json
+2. "inhibit" wird automatisch entfernt beim Laden
+3. Inhibitor-Check läuft fresh (mit --ignore-inhibitors wird er übersprungen)
+4. System suspended korrekt nach idle timeout
 
 ## Next Steps
 
