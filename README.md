@@ -175,16 +175,23 @@ See `docs/features/epics.md` for complete roadmap.
 
 ```
 aistack/
-├── cmd/aistack/           # CLI entry point
+├── cmd/aistack/           # CLI + TUI entry point
 ├── internal/              # Private application code
-│   ├── installer/        # Bootstrap and system setup
-│   ├── services/         # Container lifecycle management
-│   ├── power/            # Power monitoring and idle detection
-│   ├── metrics/          # GPU/CPU metrics collection
-│   ├── idle/             # Idle detection and autosuspend
-│   ├── wol/              # Wake-on-LAN detection and sender
-│   └── diag/             # Diagnostics and health checks
-├── assets/               # systemd units, configs
+│   ├── agent/            # Background agent runtime + idle orchestration
+│   ├── config/           # Config loading, validation, defaults
+│   ├── configdir/        # Cross-platform config/state path helpers
+│   ├── diag/             # Diagnostics + zip-pack generator
+│   ├── gpu/              # GPU detection, NVML helpers, toolkit checks
+│   ├── gpulock/          # Exclusive GPU lock + health enforcement
+│   ├── idle/             # Idle engine, suspend executor, WoL gating
+│   ├── logging/          # Structured JSON logger
+│   ├── metrics/          # CPU/GPU metrics collectors + JSONL writer
+│   ├── models/           # Ollama / LocalAI model inventory + eviction
+│   ├── secrets/          # AES-GCM secret storage for service creds
+│   ├── services/         # Compose orchestration & lifecycle helpers
+│   ├── tui/              # Bubble Tea UI
+│   └── wol/              # Wake-on-LAN setup, relay server, CLI cmds
+├── assets/               # systemd units, tmpfiles, logrotate, udev
 ├── compose/              # Docker Compose templates
 └── docs/                 # Documentation and guides
 ```

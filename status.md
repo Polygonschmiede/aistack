@@ -1,5 +1,16 @@
 # Work Status Log
 
+## 2025-11-09 15:00 CET — Repository Audit & Cleanup
+
+- **Aufgabe:** Vollständiges Projekt-Audit, Dokumentationsabgleich, Identifikation von Redundanzen/Altlasten
+- **Vorgehen:**
+  - Inventur aller Pakete/Dokumente (`tree`, `rg`, `go list`) und Abgleich mit `AGENTS.md` Expectations
+  - Entfernte versehentlich eingecheckte Build-Artefakte (`aistack` Binary, `coverage.html`) und erweiterte `.gitignore`
+  - Aktualisierte Struktur-Dokumente (`README.md`, `docs/repo-structure.md`, `CLAUDE.md`, `docs/BUILD.md`) und erstellte Audit-Report (`docs/reports/repo-audit-2025-11-09.md`)
+- **Ergebnis:** Repo spiegelt aktuelle Modulstruktur wider, Build-Artefakte bleiben lokal, Audit-Report dokumentiert weitere Cleanup-Empfehlungen (Merge der DEBUG_* Guides, fehlendes `docs/features/features.md`)
+- **Status:** ✅ Abgeschlossen — Doku aktualisiert, redundante Dateien entfernt, Folgeaufgaben dokumentiert
+
+
 ## 2025-11-09 13:30 CET — Fix Auto-Suspend: Config & Inhibitor Handling
 
 - **Aufgabe:** System suspended nicht trotz 45min idle - fehlende config und inhibitor locks

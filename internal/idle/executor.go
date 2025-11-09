@@ -30,6 +30,16 @@ func (e *Executor) Execute(state *IdleState) error {
 // ExecuteWithOptions attempts to execute suspend with optional inhibitor bypass
 func (e *Executor) ExecuteWithOptions(state *IdleState, ignoreInhibitors bool) error {
 	// Check if any other gating reasons exist first (before checking inhibitors)
+	if ignoreInhibitors {
+		filtered := make([]string, 0, len(state.GatingReasons))
+		for _, r := range state.GatingReasons {
+			if r != GatingReasonInhibit {
+				filtered = append(filtered, r)
+			}
+		}
+		state.GatingReasons = filtered
+	}
+
 	if len(state.GatingReasons) > 0 {
 		e.logger.Info("power.suspend.skipped", "Suspend skipped due to gating reasons", map[string]interface{}{
 			"idle_for_s":     state.IdleForSeconds,

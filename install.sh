@@ -525,7 +525,7 @@ deploy_logrotate() {
 # Main installation flow
 main() {
     echo "========================================"
-    echo "  aistack Bootstrap Installer (EP-002)"
+    echo "  aistack bootstrap Installer"
     echo "========================================"
     echo ""
 
