@@ -193,15 +193,15 @@ func (a *Agent) collectAndProcessMetrics() {
 		a.logger.Warn("agent.idle.state_save_failed", "Failed to save idle state", map[string]interface{}{
 			"error": err.Error(),
 		})
+	} else {
+		a.logger.Info("agent.idle.state_saved", "Idle state saved successfully", map[string]interface{}{
+			"status":         idleState.Status,
+			"idle_for_s":     idleState.IdleForSeconds,
+			"threshold_s":    idleState.ThresholdSeconds,
+			"gating_reasons": idleState.GatingReasons,
+			"gating_count":   len(idleState.GatingReasons),
+		})
 	}
-
-	// Log idle state
-	a.logger.Debug("agent.idle.state_updated", "Idle state updated", map[string]interface{}{
-		"status":         idleState.Status,
-		"idle_for_s":     idleState.IdleForSeconds,
-		"threshold_s":    idleState.ThresholdSeconds,
-		"gating_reasons": idleState.GatingReasons,
-	})
 }
 
 // resolveLogDir determines a writable log directory, favoring production defaults
