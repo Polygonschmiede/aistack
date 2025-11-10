@@ -32,6 +32,7 @@ WorkingDirectory=/var/lib/aistack
 # Environment
 Environment="AISTACK_CONFIG=/etc/aistack/config.yaml"
 Environment="AISTACK_LOG_DIR=/var/log/aistack"
+Environment="AISTACK_STATE_DIR=/var/lib/aistack"
 
 # Timeout
 TimeoutSec=30s
