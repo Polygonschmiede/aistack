@@ -1,6 +1,8 @@
 module aistack
 
-go 1.25.4
+go 1.24.0
+
+toolchain go1.24.7
 
 require (
 	github.com/NVIDIA/go-nvml v0.13.0-1
