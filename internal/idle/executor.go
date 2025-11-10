@@ -90,14 +90,21 @@ func (e *Executor) ExecuteWithOptions(state *IdleState, ignoreInhibitors bool) e
 
 	// All gates passed - request suspend
 	e.logger.Info("power.suspend.requested", "Suspend requested", map[string]interface{}{
-		"idle_for_s":    state.IdleForSeconds,
-		"threshold_s":   state.ThresholdSeconds,
-		"cpu_idle_pct":  state.CPUIdlePct,
-		"gpu_idle_pct":  state.GPUIdlePct,
-		"enable_actual": e.config.EnableSuspend,
+		"idle_for_s":     state.IdleForSeconds,
+		"threshold_s":    state.ThresholdSeconds,
+		"cpu_idle_pct":   state.CPUIdlePct,
+		"gpu_idle_pct":   state.GPUIdlePct,
+		"enable_actual":  e.config.EnableSuspend,
+		"ignore_inhibit": ignoreInhibitors,
+	})
+
+	e.logger.Info("power.suspend.gates_passed", "All suspend gates passed, executing suspend", map[string]interface{}{
+		"gating_reasons_count": len(state.GatingReasons),
+		"enable_suspend":       e.config.EnableSuspend,
 	})
 
 	// Execute systemctl suspend
+	e.logger.Info("power.suspend.executing", "About to execute suspend command", nil)
 	if err := e.executeSuspend(); err != nil {
 		e.logger.Error("power.suspend.failed", "Failed to execute suspend", map[string]interface{}{
 			"error": err.Error(),
@@ -149,11 +156,38 @@ func (e *Executor) checkInhibitors() (bool, []string, error) {
 
 // executeSuspend executes the actual suspend command
 func (e *Executor) executeSuspend() error {
+	e.logger.Info("power.suspend.execute.start", "Executing systemctl suspend command", map[string]interface{}{
+		"command": "systemctl suspend",
+	})
+
 	cmd := exec.Command("systemctl", "suspend")
+
+	// Log the command before execution
+	e.logger.Debug("power.suspend.command", "Running suspend command", map[string]interface{}{
+		"path": cmd.Path,
+		"args": cmd.Args,
+	})
+
 	output, err := cmd.CombinedOutput()
+
+	// Log output even on success for debugging
+	e.logger.Info("power.suspend.execute.output", "Suspend command output", map[string]interface{}{
+		"output": string(output),
+		"error":  err,
+	})
+
 	if err != nil {
+		e.logger.Error("power.suspend.execute.failed", "Systemctl suspend command failed", map[string]interface{}{
+			"error":       err.Error(),
+			"output":      string(output),
+			"exit_status": cmd.ProcessState,
+		})
 		return fmt.Errorf("systemctl suspend failed: %w (output: %s)", err, string(output))
 	}
+
+	e.logger.Info("power.suspend.execute.success", "Suspend command executed successfully", map[string]interface{}{
+		"output": string(output),
+	})
 	return nil
 }
 

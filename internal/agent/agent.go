@@ -283,10 +283,32 @@ func (a *Agent) Shutdown() error {
 
 // IdleCheck performs a single idle evaluation (for timer-triggered runs)
 func IdleCheck(logger *logging.Logger, ignoreInhibitors bool) error {
-	logger.Info("idle.check_started", "Idle check started", nil)
+	logger.Info("idle.check_started", "Idle check started", map[string]interface{}{
+		"ignore_inhibitors": ignoreInhibitors,
+	})
 
 	// Load idle configuration
 	idleConfig := idle.DefaultIdleConfig()
+
+	// Log configuration for debugging
+	logger.Info("idle.config_loaded", "Idle configuration loaded", map[string]interface{}{
+		"enable_suspend":       idleConfig.EnableSuspend,
+		"idle_timeout_seconds": idleConfig.IdleTimeoutSeconds,
+		"cpu_threshold_pct":    idleConfig.CPUThresholdPct,
+		"gpu_threshold_pct":    idleConfig.GPUThresholdPct,
+		"state_file_path":      idleConfig.StateFilePath,
+	})
+
+	// Check if suspend is supported by the system
+	executor := idle.NewExecutor(idleConfig, logger)
+	if err := executor.CheckCanSuspend(); err != nil {
+		logger.Error("idle.suspend_not_supported", "System suspend is not supported or not available", map[string]interface{}{
+			"error": err.Error(),
+		})
+		logger.Info("idle.check_completed", "Idle check completed (suspend not available)", nil)
+		return fmt.Errorf("suspend not available: %w", err)
+	}
+	logger.Info("idle.suspend_supported", "System suspend is available", nil)
 
 	// Create state manager and load current state
 	stateManager := idle.NewStateManager(idleConfig.StateFilePath, logger)
@@ -305,27 +327,46 @@ func IdleCheck(logger *logging.Logger, ignoreInhibitors bool) error {
 	}
 
 	logger.Info("idle.state_loaded", "Idle state loaded", map[string]interface{}{
-		"status":         state.Status,
-		"idle_for_s":     state.IdleForSeconds,
-		"threshold_s":    state.ThresholdSeconds,
-		"gating_reasons": state.GatingReasons,
+		"status":          state.Status,
+		"idle_for_s":      state.IdleForSeconds,
+		"threshold_s":     state.ThresholdSeconds,
+		"gating_reasons":  state.GatingReasons,
+		"cpu_idle_pct":    state.CPUIdlePct,
+		"gpu_idle_pct":    state.GPUIdlePct,
+		"enable_suspend":  idleConfig.EnableSuspend,
+		"ignore_inhibit":  ignoreInhibitors,
 	})
 
-	// Create idle engine and executor
+	// Create idle engine (executor already created above)
 	idleEngine := idle.NewEngine(idleConfig, logger)
-	executor := idle.NewExecutor(idleConfig, logger)
 
 	// Check if we should suspend
-	if idleEngine.ShouldSuspend(state) {
+	shouldSuspend := idleEngine.ShouldSuspend(state)
+	logger.Info("idle.suspend_decision", "Suspend decision evaluated", map[string]interface{}{
+		"should_suspend":     shouldSuspend,
+		"idle_for_s":         state.IdleForSeconds,
+		"threshold_s":        state.ThresholdSeconds,
+		"status":             state.Status,
+		"gating_reasons":     state.GatingReasons,
+		"gating_count":       len(state.GatingReasons),
+		"enable_suspend":     idleConfig.EnableSuspend,
+	})
+
+	if shouldSuspend {
 		logger.Info("idle.suspend_check", "System should suspend", map[string]interface{}{
 			"idle_for_s":  state.IdleForSeconds,
 			"threshold_s": state.ThresholdSeconds,
 		})
 
 		// Attempt suspend
+		logger.Info("idle.suspend_attempting", "Attempting to execute suspend", map[string]interface{}{
+			"ignore_inhibitors": ignoreInhibitors,
+			"enable_suspend":    idleConfig.EnableSuspend,
+		})
 		if err := executor.ExecuteWithOptions(&state, ignoreInhibitors); err != nil {
 			logger.Error("idle.suspend_failed", "Failed to execute suspend", map[string]interface{}{
-				"error": err.Error(),
+				"error":          err.Error(),
+				"gating_reasons": state.GatingReasons,
 			})
 			if saveErr := stateManager.Save(state); saveErr != nil {
 				logger.Warn("idle.state_save_failed", "Failed to persist updated state", map[string]interface{}{
