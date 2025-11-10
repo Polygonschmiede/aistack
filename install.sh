@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# aistack Bootstrap Installer (EP-002)
+# aistack Bootstrap Installer
 # Headless installation script for Ubuntu 24.04
 # Checks system requirements, installs Docker, deploys systemd units
 #
@@ -213,7 +213,7 @@ install_docker() {
     fi
 }
 
-# Detect GPU and build with appropriate flags
+# Build aistack binary (auto-detects CUDA)
 build_aistack_binary() {
     log_info "Building aistack binary..."
 
@@ -225,36 +225,16 @@ build_aistack_binary() {
         return
     fi
 
-    # Detect NVIDIA GPU
-    if command -v nvidia-smi &> /dev/null; then
-        log_info "NVIDIA GPU detected, attempting CUDA build..."
-
-        # Check for CUDA toolkit
-        if [[ -d "/usr/local/cuda" ]] || [[ -d "/usr/lib/cuda" ]] || command -v nvcc &> /dev/null; then
-            log_info "CUDA Toolkit found, building with GPU support..."
-            if command -v make &> /dev/null; then
-                (cd "$script_dir" && make build-cuda) || {
-                    log_warn "CUDA build failed, falling back to non-GPU build"
-                    (cd "$script_dir" && make build)
-                }
-            else
-                log_warn "make not found, falling back to basic build"
-                (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
-            fi
-        else
-            log_info "CUDA Toolkit not found, building without GPU support"
-            log_info "For GPU support, install: sudo apt install nvidia-cuda-toolkit"
-            (cd "$script_dir" && make build) || {
-                (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
-            }
-        fi
+    # Build with auto-detection
+    if command -v make &> /dev/null; then
+        log_info "Building with auto-detection (make will detect CUDA if available)..."
+        (cd "$script_dir" && make build) || {
+            log_error "Build failed"
+            exit 1
+        }
     else
-        log_info "No NVIDIA GPU detected, building without GPU support"
-        if command -v make &> /dev/null; then
-            (cd "$script_dir" && make build)
-        else
-            (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
-        fi
+        log_warn "make not found, falling back to basic build without GPU support"
+        (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
     fi
 
     log_info "✓ Binary built successfully"
