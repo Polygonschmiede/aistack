@@ -398,6 +398,50 @@ create_directories() {
     log_info "✓ Directory structure configured"
 }
 
+# Deploy Wake-on-LAN persistence
+deploy_wol_persistence() {
+    log_info "Deploying Wake-on-LAN persistence service..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local scripts_dir="${script_dir}/assets/scripts"
+    local systemd_dir="${script_dir}/assets/systemd"
+
+    # Check if directories exist
+    if [[ ! -d "$scripts_dir" ]]; then
+        log_error "scripts directory not found: $scripts_dir"
+        exit 1
+    fi
+    if [[ ! -d "$systemd_dir" ]]; then
+        log_error "systemd directory not found: $systemd_dir"
+        exit 1
+    fi
+
+    # Deploy WoL enable script
+    local wol_script="${scripts_dir}/enable-wol.sh"
+    if [[ ! -f "$wol_script" ]]; then
+        log_error "WoL script not found: $wol_script"
+        exit 1
+    fi
+
+    cp -f "$wol_script" /usr/local/bin/aistack-enable-wol.sh
+    chmod 755 /usr/local/bin/aistack-enable-wol.sh
+
+    # Deploy systemd service
+    cp -f "${systemd_dir}/aistack-wol-persist.service" /etc/systemd/system/
+    chmod 644 /etc/systemd/system/aistack-wol-persist.service
+
+    # Reload systemd daemon
+    systemctl daemon-reload
+
+    # Enable and start service
+    systemctl enable aistack-wol-persist.service
+    systemctl start aistack-wol-persist.service
+
+    log_info "✓ Wake-on-LAN persistence deployed and started"
+    log_info "  WoL will be automatically enabled on boot and after suspend"
+    log_info "  Check status: systemctl status aistack-wol-persist.service"
+}
+
 # Deploy systemd units for auto-suspend
 deploy_systemd_units() {
     log_info "Deploying systemd units for auto-suspend..."
@@ -481,6 +525,7 @@ main() {
     deploy_logrotate
     deploy_udev_rules
     deploy_tmpfiles
+    deploy_wol_persistence
     deploy_systemd_units
 
     echo ""
