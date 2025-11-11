@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -12,18 +11,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"aistack/internal/agent"
 	"aistack/internal/config"
 	"aistack/internal/diag"
 	"aistack/internal/gpu"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
-	"aistack/internal/metrics"
 	"aistack/internal/models"
 	"aistack/internal/services"
 	"aistack/internal/tui"
-	"aistack/internal/wol"
-	"aistack/internal/wol/relay"
 )
 
 const (
@@ -51,37 +46,29 @@ func main() {
 
 func commandHandlers() map[string]func() {
 	return map[string]func(){
-		"agent":        runAgent,
-		"idle-check":   runIdleCheck,
-		"install":      runInstall,
-		"start":        func() { runServiceCommand("start") },
-		"stop":         func() { runServiceCommand("stop") },
-		"status":       runStatus,
-		"update":       func() { runServiceCommand("update") },
-		"update-all":   runUpdateAll,
-		"logs":         func() { runServiceCommand("logs") },
-		"remove":       runRemove,
-		"uninstall":    runRemove, // Alias for remove
-		"purge":        runPurge,
-		"backend":      runBackendSwitch,
-		"config":       runConfig,
-		"gpu-check":    runGPUCheck,
-		"gpu-unlock":   runGPUUnlock,
-		"metrics-test": runMetricsTest,
-		"wol-check":    runWoLCheck,
-		"wol-setup":    runWoLSetup,
-		"wol-send":     runWoLSend,
-		"wol-apply":    runWoLApply,
-		"wol-relay":    runWoLRelay,
-		"models":       runModels,
-		"health":       runHealth,
-		"repair":       func() { runServiceCommand("repair") },
-		"diag":         runDiag,
-		"versions":     runVersions,
-		"version":      runVersion,
-		"help":         printUsage,
-		"--help":       printUsage,
-		"-h":           printUsage,
+		"install":    runInstall,
+		"start":      func() { runServiceCommand("start") },
+		"stop":       func() { runServiceCommand("stop") },
+		"status":     runStatus,
+		"update":     func() { runServiceCommand("update") },
+		"update-all": runUpdateAll,
+		"logs":       func() { runServiceCommand("logs") },
+		"remove":     runRemove,
+		"uninstall":  runRemove, // Alias for remove
+		"purge":      runPurge,
+		"backend":    runBackendSwitch,
+		"config":     runConfig,
+		"gpu-check":  runGPUCheck,
+		"gpu-unlock": runGPUUnlock,
+		"models":     runModels,
+		"health":     runHealth,
+		"repair":     func() { runServiceCommand("repair") },
+		"diag":       runDiag,
+		"versions":   runVersions,
+		"version":    runVersion,
+		"help":       printUsage,
+		"--help":     printUsage,
+		"-h":         printUsage,
 	}
 }
 
@@ -245,45 +232,6 @@ func runTUI() {
 		"ts":     time.Now().UTC().Format(time.RFC3339),
 		"reason": exitReason,
 	})
-}
-
-// runAgent starts the background agent service (for systemd)
-func runAgent() {
-	// Setup logger for agent mode (structured JSON to journald)
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	logger.Info("agent.mode", "Starting in agent mode", map[string]interface{}{
-		"version": version,
-	})
-
-	// Create and run agent
-	agentInstance := agent.NewAgent(logger)
-
-	if err := agentInstance.Run(); err != nil {
-		logger.Error("agent.error", "Agent error", map[string]interface{}{
-			"error": err.Error(),
-		})
-		os.Exit(1)
-	}
-}
-
-// runIdleCheck performs a single idle check (for timer-triggered runs)
-func runIdleCheck() {
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	// Check for --ignore-inhibitors flag
-	ignoreInhibitors := false
-	if len(os.Args) > 2 && os.Args[2] == "--ignore-inhibitors" {
-		ignoreInhibitors = true
-		logger.Info("idle.check.force_mode", "Ignoring systemd inhibitors", nil)
-	}
-
-	if err := agent.IdleCheck(logger, ignoreInhibitors); err != nil {
-		logger.Error("idle.error", "Idle check error", map[string]interface{}{
-			"error": err.Error(),
-		})
-		os.Exit(1)
-	}
 }
 
 // runInstall installs services based on profile or individual service
@@ -933,77 +881,6 @@ func runGPUCheck() {
 	}
 }
 
-// runMetricsTest performs a test metrics collection
-func runMetricsTest() {
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	fmt.Println("Testing metrics collection...")
-	fmt.Println()
-
-	// Create collector with default config
-	config := metrics.DefaultConfig()
-	collector := metrics.NewCollector(config, logger)
-
-	// Initialize
-	if err := collector.Initialize(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize metrics collector: %v\n", err)
-		os.Exit(1)
-	}
-	defer collector.Shutdown()
-
-	fmt.Println("=== Metrics Collection Test ===")
-	fmt.Println("Collecting 3 samples with 5-second interval...")
-	fmt.Println()
-
-	// Collect 3 samples
-	for i := 0; i < 3; i++ {
-		sample, err := collector.CollectSample()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to collect sample: %v\n", err)
-			continue
-		}
-
-		// Display sample
-		fmt.Printf("Sample %d (at %s):\n", i+1, sample.Timestamp.Format(time.RFC3339))
-		if sample.CPUUtil != nil {
-			fmt.Printf("  CPU Utilization: %.2f%%\n", *sample.CPUUtil)
-		}
-		if sample.CPUWatts != nil {
-			fmt.Printf("  CPU Power: %.2f W\n", *sample.CPUWatts)
-		}
-		if sample.GPUUtil != nil {
-			fmt.Printf("  GPU Utilization: %.2f%%\n", *sample.GPUUtil)
-		}
-		if sample.GPUMemMB != nil {
-			fmt.Printf("  GPU Memory: %d MB\n", *sample.GPUMemMB)
-		}
-		if sample.GPUWatts != nil {
-			fmt.Printf("  GPU Power: %.2f W\n", *sample.GPUWatts)
-		}
-		if sample.TempGPU != nil {
-			fmt.Printf("  GPU Temperature: %.1f°C\n", *sample.TempGPU)
-		}
-		if sample.EstTotalW != nil {
-			fmt.Printf("  Estimated Total Power: %.2f W\n", *sample.EstTotalW)
-		}
-		fmt.Println()
-
-		// Write to temp file
-		tmpFile := "/tmp/aistack_metrics_test.jsonl"
-		if err := collector.WriteSample(sample, tmpFile); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: Failed to write sample: %v\n", err)
-		}
-
-		// Wait before next sample (except for last one)
-		if i < 2 {
-			time.Sleep(5 * time.Second)
-		}
-	}
-
-	fmt.Println("✓ Metrics test completed")
-	fmt.Println("Sample data written to: /tmp/aistack_metrics_test.jsonl")
-}
-
 // runGPUUnlock forcibly removes the GPU lock
 // Story T-021: GPU-Mutex (Dateisperre + Lease)
 func runGPUUnlock() {
@@ -1060,318 +937,6 @@ func runGPUUnlock() {
 	fmt.Println("✓ GPU lock forcibly removed")
 	fmt.Println()
 	fmt.Println("You can now start another GPU-intensive service.")
-}
-
-// runWoLCheck checks Wake-on-LAN status for network interfaces
-func runWoLCheck() {
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	fmt.Println("Checking Wake-on-LAN configuration...")
-	fmt.Println()
-
-	detector := wol.NewDetector(logger)
-
-	// Try to get default interface
-	iface, err := detector.GetDefaultInterface()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to detect default network interface: %v\n", err)
-		fmt.Println()
-		fmt.Println("💡 Hint: Specify interface manually with 'aistack wol-setup <interface>'")
-		os.Exit(1)
-	}
-
-	fmt.Printf("Checking interface: %s\n", iface)
-	fmt.Println()
-
-	// Detect WoL status
-	status := detector.DetectWoL(iface)
-
-	// Display results
-	fmt.Println("=== Wake-on-LAN Status ===")
-	fmt.Printf("Interface: %s\n", status.Interface)
-	fmt.Printf("MAC Address: %s\n", status.MAC)
-	fmt.Println()
-
-	if status.ErrorMessage != "" {
-		fmt.Printf("❌ Error: %s\n", status.ErrorMessage)
-		fmt.Println()
-		if !status.Supported {
-			fmt.Println("💡 Hint: Wake-on-LAN may not be supported by your hardware/driver")
-			fmt.Println("   or ethtool may not be installed (apt-get install ethtool)")
-		}
-		os.Exit(1)
-	}
-
-	if status.Supported {
-		fmt.Printf("✓ WoL Supported: Yes\n")
-		fmt.Printf("  Available modes: %v\n", status.WoLModes)
-	} else {
-		fmt.Printf("❌ WoL Supported: No\n")
-	}
-
-	fmt.Printf("  Current mode: %s\n", status.CurrentMode)
-
-	if status.Enabled {
-		fmt.Printf("✓ WoL Status: ENABLED\n")
-		fmt.Println()
-		fmt.Println("Your system can be woken via Wake-on-LAN magic packets.")
-		fmt.Printf("To send a test packet: aistack wol-send %s\n", status.MAC)
-	} else {
-		fmt.Printf("❌ WoL Status: DISABLED\n")
-		fmt.Println()
-		fmt.Printf("To enable Wake-on-LAN: sudo aistack wol-setup %s\n", iface)
-	}
-
-	fmt.Println()
-	fmt.Println("⚠️  Note: BIOS/UEFI WoL settings are outside the scope of this tool.")
-	fmt.Println("   Ensure 'Wake on LAN' is enabled in your system BIOS/UEFI.")
-
-	if cfg, err := wol.LoadConfig(); err == nil {
-		fmt.Println()
-		fmt.Printf("Persisted config: %s\n", wol.ConfigPath())
-		fmt.Printf("  Stored interface: %s (mode: %s)\n", cfg.Interface, cfg.WoLState)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		logger.Warn("wol.config.read_failed", "Failed to read persisted WoL config", map[string]interface{}{
-			"error": err.Error(),
-		})
-	}
-}
-
-// runWoLSetup enables Wake-on-LAN on a specified interface
-func runWoLSetup() {
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: aistack wol-setup <interface>\n")
-		fmt.Fprintf(os.Stderr, "Example: aistack wol-setup eth0\n")
-		os.Exit(1)
-	}
-
-	iface := os.Args[2]
-
-	fmt.Printf("Setting up Wake-on-LAN on interface: %s\n", iface)
-	fmt.Println()
-
-	detector := wol.NewDetector(logger)
-
-	// Check current status
-	status := detector.DetectWoL(iface)
-	if status.ErrorMessage != "" {
-		fmt.Fprintf(os.Stderr, "❌ Error: %s\n", status.ErrorMessage)
-		os.Exit(1)
-	}
-
-	if !status.Supported {
-		fmt.Fprintf(os.Stderr, "❌ Wake-on-LAN is not supported on interface %s\n", iface)
-		os.Exit(1)
-	}
-
-	if status.Enabled {
-		fmt.Printf("✓ Wake-on-LAN is already enabled on %s\n", iface)
-		fmt.Printf("  Current mode: %s\n", status.CurrentMode)
-		fmt.Printf("  MAC Address: %s\n", status.MAC)
-
-		broadcast, bErr := wol.GetBroadcastAddr(iface)
-		if bErr != nil {
-			logger.Warn("wol.broadcast.lookup_failed", "Failed to resolve broadcast address", map[string]interface{}{
-				"interface": iface,
-				"error":     bErr.Error(),
-			})
-		}
-
-		cfg := wol.WoLConfig{
-			Interface:   iface,
-			MAC:         status.MAC,
-			WoLState:    status.CurrentMode,
-			BroadcastIP: broadcast,
-		}
-
-		if err := wol.SaveConfig(cfg); err != nil {
-			logger.Warn("wol.config.save_failed", "Failed to persist WoL config", map[string]interface{}{
-				"error": err.Error(),
-			})
-		} else {
-			fmt.Printf("  Persisted config: %s\n", wol.ConfigPath())
-		}
-
-		return
-	}
-
-	// Enable WoL
-	fmt.Printf("Enabling Wake-on-LAN (requires root privileges)...\n")
-	if err := detector.EnableWoL(iface); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to enable WoL: %v\n", err)
-		fmt.Println()
-		fmt.Println("💡 Hint: This command requires root privileges")
-		fmt.Printf("   Try: sudo aistack wol-setup %s\n", iface)
-		os.Exit(1)
-	}
-
-	// Verify
-	status = detector.DetectWoL(iface)
-	if status.Enabled {
-		fmt.Printf("✓ Wake-on-LAN successfully enabled on %s\n", iface)
-		fmt.Printf("  Mode: %s (magic packet)\n", status.CurrentMode)
-		fmt.Printf("  MAC Address: %s\n", status.MAC)
-
-		broadcast, bErr := wol.GetBroadcastAddr(iface)
-		if bErr != nil {
-			logger.Warn("wol.broadcast.lookup_failed", "Failed to resolve broadcast address", map[string]interface{}{
-				"interface": iface,
-				"error":     bErr.Error(),
-			})
-		}
-
-		cfg := wol.WoLConfig{
-			Interface:   iface,
-			MAC:         status.MAC,
-			WoLState:    status.CurrentMode,
-			BroadcastIP: broadcast,
-		}
-
-		if err := wol.SaveConfig(cfg); err != nil {
-			logger.Warn("wol.config.save_failed", "Failed to persist WoL config", map[string]interface{}{
-				"error": err.Error(),
-			})
-			fmt.Println()
-			fmt.Println("⚠️  WoL enabled but config persistence failed — see logs for details")
-		} else {
-			fmt.Println()
-			fmt.Printf("Config persisted to: %s\n", wol.ConfigPath())
-			fmt.Println("A udev rule will reapply this setting on interface events.")
-		}
-	} else {
-		fmt.Fprintf(os.Stderr, "❌ WoL enable command succeeded but verification failed\n")
-		os.Exit(1)
-	}
-}
-
-// runWoLSend sends a Wake-on-LAN magic packet
-func runWoLSend() {
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: aistack wol-send <mac-address> [broadcast-ip]\n")
-		fmt.Fprintf(os.Stderr, "Example: aistack wol-send AA:BB:CC:DD:EE:FF\n")
-		fmt.Fprintf(os.Stderr, "         aistack wol-send AA:BB:CC:DD:EE:FF 192.168.1.255\n")
-		os.Exit(1)
-	}
-
-	targetMAC := os.Args[2]
-	broadcastIP := ""
-
-	if len(os.Args) > 3 {
-		broadcastIP = os.Args[3]
-	}
-
-	// Validate MAC address
-	if err := wol.ValidateMAC(targetMAC); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Invalid MAC address: %v\n", err)
-		os.Exit(1)
-	}
-
-	normalized, err := wol.NormalizeMAC(targetMAC)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to normalize MAC address: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Sending Wake-on-LAN magic packet...\n")
-	fmt.Printf("  Target MAC: %s\n", normalized)
-
-	if broadcastIP != "" {
-		fmt.Printf("  Broadcast IP: %s\n", broadcastIP)
-	} else {
-		fmt.Printf("  Broadcast IP: 255.255.255.255 (default)\n")
-	}
-
-	fmt.Println()
-
-	sender := wol.NewSender(logger)
-	if err := sender.SendMagicPacket(targetMAC, broadcastIP); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to send magic packet: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("✓ Magic packet sent successfully\n")
-	fmt.Println()
-	fmt.Println("The target system should wake up if:")
-	fmt.Println("  1. Wake-on-LAN is enabled in BIOS/UEFI")
-	fmt.Println("  2. Wake-on-LAN is enabled in the OS (ethtool)")
-	fmt.Println("  3. The system is connected to power")
-	fmt.Println("  4. The network switch supports broadcast packets")
-}
-
-// runWoLApply reapplies persisted WoL configuration (used by udev/systemd)
-func runWoLApply() {
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	cfg, err := wol.LoadConfig()
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			logger.Info("wol.apply.config_missing", "No persisted WoL config found", nil)
-			return
-		}
-		fmt.Fprintf(os.Stderr, "❌ Failed to load WoL config: %v\n", err)
-		os.Exit(1)
-	}
-
-	var targetIface string
-	if len(os.Args) > 2 {
-		if os.Args[2] == "--interface" && len(os.Args) > 3 {
-			targetIface = os.Args[3]
-		} else {
-			targetIface = os.Args[2]
-		}
-	}
-
-	if targetIface != "" && targetIface != cfg.Interface {
-		logger.Info("wol.apply.skip_interface", "Configured interface does not match trigger", map[string]interface{}{
-			"configured": cfg.Interface,
-			"requested":  targetIface,
-		})
-		return
-	}
-
-	detector := wol.NewDetector(logger)
-	if err := detector.ApplyConfig(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to apply WoL config: %v\n", err)
-		os.Exit(1)
-	}
-
-	logger.Info("wol.apply.success", "WoL configuration applied", map[string]interface{}{
-		"interface": cfg.Interface,
-		"mode":      cfg.WoLState,
-	})
-}
-
-func runWoLRelay() {
-	fs := flag.NewFlagSet("wol-relay", flag.ExitOnError)
-	listen := fs.String("listen", ":8081", "host:port to listen on")
-	key := fs.String("key", "", "shared secret key (or set AISTACK_WOL_RELAY_KEY)")
-
-	if err := fs.Parse(os.Args[2:]); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to parse flags: %v\n", err)
-		os.Exit(1)
-	}
-
-	relayKey := *key
-	if relayKey == "" {
-		relayKey = os.Getenv("AISTACK_WOL_RELAY_KEY")
-	}
-
-	if relayKey == "" {
-		fmt.Fprintf(os.Stderr, "Usage: aistack wol-relay [--listen :8081] --key <shared-secret>\n")
-		os.Exit(1)
-	}
-
-	logger := logging.NewLogger(logging.LevelInfo)
-	server := relay.NewServer(*listen, relayKey, logger)
-
-	if err := server.Serve(); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Wol relay stopped: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 // runUpdateAll updates all services sequentially with health-gating
@@ -1605,22 +1170,10 @@ func runConfigTest(logger *logging.Logger) {
 	fmt.Printf("  Container Runtime:    %s\n", cfg.ContainerRuntime)
 	fmt.Printf("  Profile:              %s\n", cfg.Profile)
 	fmt.Printf("  GPU Lock:             %t\n", cfg.GPULock)
-	fmt.Printf("  CPU Idle Threshold:   %d%%\n", cfg.Idle.CPUIdleThreshold)
-	fmt.Printf("  GPU Idle Threshold:   %d%%\n", cfg.Idle.GPUIdleThreshold)
-	fmt.Printf("  Idle Window:          %ds\n", cfg.Idle.WindowSeconds)
-	fmt.Printf("  Idle Timeout:         %ds\n", cfg.Idle.IdleTimeoutSeconds)
-	fmt.Printf("  Baseline Power:       %.1fW\n", cfg.PowerEstimation.BaselineWatts)
 	fmt.Printf("  Log Level:            %s\n", cfg.Logging.Level)
 	fmt.Printf("  Log Format:           %s\n", cfg.Logging.Format)
 	fmt.Printf("  Keep Cache:           %t\n", cfg.Models.KeepCacheOnUninstall)
 	fmt.Printf("  Updates Mode:         %s\n", cfg.Updates.Mode)
-
-	if cfg.WoL.Interface != "" && cfg.WoL.Interface != "eth0" {
-		fmt.Printf("  WoL Interface:        %s\n", cfg.WoL.Interface)
-	}
-	if cfg.WoL.MAC != "" && cfg.WoL.MAC != "00:00:00:00:00:00" {
-		fmt.Printf("  WoL MAC:              %s\n", cfg.WoL.MAC)
-	}
 
 	logger.Info("config.validation.ok", "Configuration validation passed", map[string]interface{}{
 		"profile": cfg.Profile,
@@ -1994,8 +1547,6 @@ func printUsage() {
 
 Usage:
   aistack                          Start the interactive TUI (default)
-  aistack agent                    Run as background agent service
-  aistack idle-check [--ignore-inhibitors]  Perform idle evaluation (timer-triggered)
   aistack install --profile <name> Install services from profile (standard-gpu, minimal)
   aistack install <service>        Install a specific service (ollama, openwebui, localai)
   aistack start <service>          Start a service
@@ -2013,12 +1564,6 @@ Usage:
   aistack config test [path]       Test configuration file for validity (defaults to system/user configs)
   aistack gpu-check [--save]       Check GPU and NVIDIA stack availability
   aistack gpu-unlock               Force unlock GPU mutex (recovery)
-  aistack metrics-test             Test metrics collection (CPU/GPU)
-  aistack wol-check                Check Wake-on-LAN status
-  aistack wol-setup <interface>    Enable Wake-on-LAN on interface (requires root)
-  aistack wol-send <mac> [ip]      Send Wake-on-LAN magic packet
-  aistack wol-apply [interface]    Reapply persisted WoL configuration (for udev/systemd)
-  aistack wol-relay [flags]        Start HTTP→WoL relay (use --key or AISTACK_WOL_RELAY_KEY)
   aistack models <subcommand>      Model management (list, download, delete, stats, evict-oldest)
   aistack diag [--output path] [--no-logs] [--no-config]  Create diagnostic package (ZIP with logs, config, manifest)
   aistack versions                 Show version lock status and update policy (rolling/pinned)

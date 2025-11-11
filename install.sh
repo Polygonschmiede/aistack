@@ -398,60 +398,7 @@ create_directories() {
     log_info "✓ Directory structure configured"
 }
 
-# Deploy systemd units - ALWAYS redeploy and restart
-deploy_systemd_units() {
-    log_info "Deploying systemd units (always fresh)..."
-
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local systemd_source="${script_dir}/assets/systemd"
-
-    if [[ ! -d "$systemd_source" ]]; then
-        log_error "systemd units directory not found: $systemd_source"
-        exit 1
-    fi
-
-    # Always stop services first
-    log_info "Stopping existing services..."
-    systemctl stop aistack-agent.service 2>/dev/null || true
-    systemctl stop aistack-idle.timer 2>/dev/null || true
-
-    # Copy service files (always overwrite)
-    log_info "Copying systemd unit files..."
-    for unit_file in "$systemd_source"/*.{service,timer}; do
-        if [[ -f "$unit_file" ]]; then
-            local unit_name=$(basename "$unit_file")
-            cp -f "$unit_file" /etc/systemd/system/
-            log_info "✓ Deployed $unit_name"
-        fi
-    done
-
-    # Reload systemd
-    log_info "Reloading systemd daemon..."
-    systemctl daemon-reload
-    log_info "✓ Reloaded systemd daemon"
-
-    # Always enable and start agent service
-    log_info "Enabling and starting aistack-agent.service..."
-    systemctl enable aistack-agent.service
-    systemctl start aistack-agent.service
-    sleep 2
-
-    if systemctl is-active --quiet aistack-agent.service; then
-        log_info "✓ aistack-agent.service is running"
-    else
-        log_error "Failed to start aistack-agent.service"
-        systemctl status aistack-agent.service --no-pager || true
-        exit 1
-    fi
-
-    # Always enable and start timer
-    if [[ -f /etc/systemd/system/aistack-idle.timer ]]; then
-        log_info "Enabling and starting aistack-idle.timer..."
-        systemctl enable aistack-idle.timer
-        systemctl start aistack-idle.timer
-        log_info "✓ aistack-idle.timer is running"
-    fi
-}
+# No systemd units to deploy (agent and idle timer removed)
 
 # Deploy logrotate configuration - ALWAYS redeploy
 deploy_logrotate() {
@@ -501,7 +448,6 @@ main() {
     ensure_config_defaults
 
     # Deploy configurations
-    deploy_systemd_units
     deploy_logrotate
     deploy_udev_rules
     deploy_tmpfiles
@@ -512,9 +458,9 @@ main() {
     log_info "========================================="
     log_info ""
     log_info "Next steps:"
-    log_info "  1. Check service status: systemctl status aistack-agent"
-    log_info "  2. View logs: journalctl -u aistack-agent -f"
-    log_info "  3. Run aistack CLI: aistack --help"
+    log_info "  1. Run aistack CLI: aistack --help"
+    log_info "  2. Start TUI: aistack"
+    log_info "  3. Check service status: aistack status"
     log_info ""
     log_info "Bootstrap log: /tmp/aistack-bootstrap.log"
 }

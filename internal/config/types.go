@@ -5,32 +5,9 @@ type Config struct {
 	ContainerRuntime string        `yaml:"container_runtime"`
 	Profile          string        `yaml:"profile"`
 	GPULock          bool          `yaml:"gpu_lock"`
-	Idle             IdleConfig    `yaml:"idle"`
-	PowerEstimation  PowerConfig   `yaml:"power_estimation"`
-	WoL              WoLConfig     `yaml:"wol"`
 	Logging          LoggingConfig `yaml:"logging"`
 	Models           ModelsConfig  `yaml:"models"`
 	Updates          UpdatesConfig `yaml:"updates"`
-}
-
-// IdleConfig represents idle detection configuration
-type IdleConfig struct {
-	CPUIdleThreshold   int `yaml:"cpu_idle_threshold"`
-	GPUIdleThreshold   int `yaml:"gpu_idle_threshold"`
-	WindowSeconds      int `yaml:"window_seconds"`
-	IdleTimeoutSeconds int `yaml:"idle_timeout_seconds"`
-}
-
-// PowerConfig represents power estimation configuration
-type PowerConfig struct {
-	BaselineWatts float64 `yaml:"baseline_watts"`
-}
-
-// WoLConfig represents Wake-on-LAN configuration
-type WoLConfig struct {
-	Interface string `yaml:"interface"`
-	MAC       string `yaml:"mac"`
-	RelayURL  string `yaml:"relay_url"`
 }
 
 // LoggingConfig represents logging configuration
