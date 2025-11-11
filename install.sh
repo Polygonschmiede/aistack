@@ -398,7 +398,37 @@ create_directories() {
     log_info "✓ Directory structure configured"
 }
 
-# No systemd units to deploy (agent and idle timer removed)
+# Deploy systemd units for auto-suspend
+deploy_systemd_units() {
+    log_info "Deploying systemd units for auto-suspend..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local systemd_dir="${script_dir}/assets/systemd"
+
+    # Check if systemd directory exists
+    if [[ ! -d "$systemd_dir" ]]; then
+        log_error "systemd directory not found: $systemd_dir"
+        exit 1
+    fi
+
+    # Deploy service and timer
+    cp -f "${systemd_dir}/aistack-suspend.service" /etc/systemd/system/
+    cp -f "${systemd_dir}/aistack-suspend.timer" /etc/systemd/system/
+    chmod 644 /etc/systemd/system/aistack-suspend.service
+    chmod 644 /etc/systemd/system/aistack-suspend.timer
+
+    # Reload systemd daemon
+    systemctl daemon-reload
+
+    # Enable and start timer (not service - timer triggers service)
+    systemctl enable aistack-suspend.timer
+    systemctl start aistack-suspend.timer
+
+    log_info "✓ systemd units deployed and timer started"
+    log_info "  Auto-suspend will activate after 5 minutes of idle time"
+    log_info "  Check status: systemctl status aistack-suspend.timer"
+    log_info "  Disable: aistack suspend disable"
+}
 
 # Deploy logrotate configuration - ALWAYS redeploy
 deploy_logrotate() {
@@ -451,6 +481,7 @@ main() {
     deploy_logrotate
     deploy_udev_rules
     deploy_tmpfiles
+    deploy_systemd_units
 
     echo ""
     log_info "========================================="

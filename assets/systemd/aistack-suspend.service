@@ -1,0 +1,25 @@
+[Unit]
+Description=aistack Auto-Suspend Check
+Documentation=https://github.com/polygonschmiede/aistack
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aistack suspend check
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aistack-suspend
+
+# Run as root (required for systemctl suspend)
+User=root
+Group=root
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/aistack /var/log/aistack
+
+[Install]
+WantedBy=multi-user.target

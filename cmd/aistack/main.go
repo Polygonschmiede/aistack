@@ -18,6 +18,7 @@ import (
 	"aistack/internal/logging"
 	"aistack/internal/models"
 	"aistack/internal/services"
+	"aistack/internal/suspend"
 	"aistack/internal/tui"
 )
 
@@ -66,6 +67,7 @@ func commandHandlers() map[string]func() {
 		"diag":       runDiag,
 		"versions":   runVersions,
 		"version":    runVersion,
+		"suspend":    runSuspend,
 		"help":       printUsage,
 		"--help":     printUsage,
 		"-h":         printUsage,
@@ -1567,6 +1569,7 @@ Usage:
   aistack models <subcommand>      Model management (list, download, delete, stats, evict-oldest)
   aistack diag [--output path] [--no-logs] [--no-config]  Create diagnostic package (ZIP with logs, config, manifest)
   aistack versions                 Show version lock status and update policy (rolling/pinned)
+  aistack suspend <subcommand>     Auto-suspend management (enable, disable, status)
   aistack version                  Print version information
   aistack help                     Show this help message
 
@@ -1576,6 +1579,11 @@ Model Management:
   aistack models delete <provider> <name>   Delete a model
   aistack models stats <provider>           Show cache statistics
   aistack models evict-oldest <provider>    Remove oldest model to free space
+
+Suspend Management:
+  aistack suspend enable                   Enable auto-suspend (default)
+  aistack suspend disable                  Disable auto-suspend
+  aistack suspend status                   Show suspend status and configuration
 
 For more information, visit: https://github.com/polygonschmiede/aistack
 `, version)
@@ -1621,4 +1629,146 @@ func dirExists(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+// ========================================
+// Suspend Command Handlers
+// ========================================
+
+// runSuspend handles the suspend command and subcommands
+func runSuspend() {
+	if len(os.Args) < 3 {
+		fmt.Fprintf(os.Stderr, "Usage: aistack suspend <enable|disable|status|check>\n")
+		fmt.Fprintf(os.Stderr, "\n")
+		fmt.Fprintf(os.Stderr, "Subcommands:\n")
+		fmt.Fprintf(os.Stderr, "  enable   Enable auto-suspend (default)\n")
+		fmt.Fprintf(os.Stderr, "  disable  Disable auto-suspend\n")
+		fmt.Fprintf(os.Stderr, "  status   Show suspend status\n")
+		fmt.Fprintf(os.Stderr, "  check    Check and execute suspend if idle (internal use)\n")
+		os.Exit(1)
+	}
+
+	subcommand := strings.ToLower(os.Args[2])
+
+	switch subcommand {
+	case "enable":
+		runSuspendEnable()
+	case "disable":
+		runSuspendDisable()
+	case "status":
+		runSuspendStatus()
+	case "check":
+		runSuspendCheck()
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown suspend subcommand: %s\n", subcommand)
+		fmt.Fprintf(os.Stderr, "Valid subcommands: enable, disable, status, check\n")
+		os.Exit(1)
+	}
+}
+
+// runSuspendEnable enables auto-suspend
+func runSuspendEnable() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	manager := suspend.NewManager(logger)
+
+	if err := manager.Enable(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error enabling auto-suspend: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("✓ Auto-suspend enabled")
+	fmt.Println()
+	fmt.Println("The system will suspend after 5 minutes of idle time.")
+	fmt.Println("Idle = CPU < 10% AND GPU < 5%")
+}
+
+// runSuspendDisable disables auto-suspend
+func runSuspendDisable() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	manager := suspend.NewManager(logger)
+
+	if err := manager.Disable(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error disabling auto-suspend: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("✓ Auto-suspend disabled")
+	fmt.Println()
+	fmt.Println("The system will NOT automatically suspend.")
+}
+
+// runSuspendStatus shows current suspend status
+func runSuspendStatus() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	manager := suspend.NewManager(logger)
+
+	state, err := manager.LoadState()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading suspend state: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("=== Auto-Suspend Status ===")
+	fmt.Println()
+
+	// Status
+	if state.Enabled {
+		fmt.Println("Status: ENABLED ✓")
+	} else {
+		fmt.Println("Status: DISABLED ✗")
+	}
+
+	// Configuration
+	fmt.Println()
+	fmt.Println("Configuration:")
+	fmt.Printf("  Idle Timeout:    %d seconds (5 minutes)\n", suspend.IdleTimeoutSeconds)
+	fmt.Printf("  CPU Threshold:   %.1f%%\n", suspend.CPUIdleThreshold)
+	fmt.Printf("  GPU Threshold:   %.1f%%\n", suspend.GPUIdleThreshold)
+
+	// Activity status
+	fmt.Println()
+	lastActive := time.Unix(state.LastActiveTimestamp, 0)
+	idleDuration := time.Since(lastActive)
+
+	fmt.Println("Activity:")
+	fmt.Printf("  Last Active:     %s\n", lastActive.Format(time.RFC3339))
+	fmt.Printf("  Idle Duration:   %s\n", formatDuration(idleDuration))
+
+	if state.Enabled {
+		remaining := time.Duration(suspend.IdleTimeoutSeconds)*time.Second - idleDuration
+		if remaining > 0 {
+			fmt.Printf("  Time to Suspend: %s\n", formatDuration(remaining))
+		} else {
+			fmt.Println("  Time to Suspend: READY (will suspend on next check)")
+		}
+	}
+}
+
+// runSuspendCheck performs suspend check (called by systemd timer)
+func runSuspendCheck() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	executor := suspend.NewExecutor(logger, false) // dryRun=false for production
+
+	if err := executor.CheckAndSuspend(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error during suspend check: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// formatDuration formats a duration in human-readable format
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
