@@ -177,3 +177,23 @@ func (m *Manager) ShouldSuspend(state *State) bool {
 	idleDuration := m.GetIdleDuration(state)
 	return idleDuration >= time.Duration(IdleTimeoutSeconds)*time.Second
 }
+
+// ResetActivityTimestamp resets the last active timestamp to now (e.g. after resume)
+func (m *Manager) ResetActivityTimestamp() error {
+	state, err := m.LoadState()
+	if err != nil {
+		return fmt.Errorf("load state: %w", err)
+	}
+
+	state.LastActiveTimestamp = time.Now().Unix()
+
+	if err := m.SaveState(state); err != nil {
+		return fmt.Errorf("save state: %w", err)
+	}
+
+	m.logger.Info("suspend.timestamp.reset", "Activity timestamp reset after resume", map[string]interface{}{
+		"timestamp": state.LastActiveTimestamp,
+	})
+
+	return nil
+}

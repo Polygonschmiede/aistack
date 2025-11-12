@@ -458,8 +458,10 @@ deploy_systemd_units() {
     # Deploy service and timer
     cp -f "${systemd_dir}/aistack-suspend.service" /etc/systemd/system/
     cp -f "${systemd_dir}/aistack-suspend.timer" /etc/systemd/system/
+    cp -f "${systemd_dir}/aistack-suspend-resume.service" /etc/systemd/system/
     chmod 644 /etc/systemd/system/aistack-suspend.service
     chmod 644 /etc/systemd/system/aistack-suspend.timer
+    chmod 644 /etc/systemd/system/aistack-suspend-resume.service
 
     # Reload systemd daemon
     systemctl daemon-reload
@@ -468,8 +470,12 @@ deploy_systemd_units() {
     systemctl enable aistack-suspend.timer
     systemctl start aistack-suspend.timer
 
+    # Enable resume hook (triggers after suspend/resume)
+    systemctl enable aistack-suspend-resume.service
+
     log_info "✓ systemd units deployed and timer started"
     log_info "  Auto-suspend will activate after 5 minutes of idle time"
+    log_info "  Timer resets automatically after resume/wake-up"
     log_info "  Check status: systemctl status aistack-suspend.timer"
     log_info "  Disable: aistack suspend disable"
 }

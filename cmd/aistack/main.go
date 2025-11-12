@@ -1645,6 +1645,7 @@ func runSuspend() {
 		fmt.Fprintf(os.Stderr, "  disable  Disable auto-suspend\n")
 		fmt.Fprintf(os.Stderr, "  status   Show suspend status\n")
 		fmt.Fprintf(os.Stderr, "  check    Check and execute suspend if idle (internal use)\n")
+		fmt.Fprintf(os.Stderr, "  reset    Reset activity timestamp (after resume, internal use)\n")
 		os.Exit(1)
 	}
 
@@ -1659,9 +1660,11 @@ func runSuspend() {
 		runSuspendStatus()
 	case "check":
 		runSuspendCheck()
+	case "reset":
+		runSuspendReset()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown suspend subcommand: %s\n", subcommand)
-		fmt.Fprintf(os.Stderr, "Valid subcommands: enable, disable, status, check\n")
+		fmt.Fprintf(os.Stderr, "Valid subcommands: enable, disable, status, check, reset\n")
 		os.Exit(1)
 	}
 }
@@ -1753,6 +1756,19 @@ func runSuspendCheck() {
 		fmt.Fprintf(os.Stderr, "Error during suspend check: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runSuspendReset resets activity timestamp (called after resume)
+func runSuspendReset() {
+	logger := logging.NewLogger(logging.LevelInfo)
+	manager := suspend.NewManager(logger)
+
+	if err := manager.ResetActivityTimestamp(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error resetting activity timestamp: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger.Info("suspend.reset.done", "Activity timestamp reset successfully", nil)
 }
 
 // formatDuration formats a duration in human-readable format
