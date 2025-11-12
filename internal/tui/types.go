@@ -15,8 +15,6 @@ const (
 	ScreenInstall Screen = "install"
 	// ScreenModels shows model management
 	ScreenModels Screen = "models"
-	// ScreenPower shows power management
-	ScreenPower Screen = "power"
 	// ScreenLogs shows service logs
 	ScreenLogs Screen = "logs"
 	// ScreenDiagnostics shows diagnostics
@@ -50,10 +48,9 @@ func DefaultMenuItems() []MenuItem {
 		{Key: "1", Label: "Status", Description: "View service status", Screen: ScreenStatus},
 		{Key: "2", Label: "Install/Uninstall", Description: "Manage service installation", Screen: ScreenInstall},
 		{Key: "3", Label: "Models", Description: "Model management", Screen: ScreenModels},
-		{Key: "4", Label: "Power", Description: "Power & idle management", Screen: ScreenPower},
-		{Key: "5", Label: "Logs", Description: "View service logs", Screen: ScreenLogs},
-		{Key: "6", Label: "Diagnostics", Description: "Run diagnostics", Screen: ScreenDiagnostics},
-		{Key: "7", Label: "Settings", Description: "Configure aistack", Screen: ScreenSettings},
+		{Key: "4", Label: "Logs", Description: "View service logs", Screen: ScreenLogs},
+		{Key: "5", Label: "Diagnostics", Description: "Run diagnostics", Screen: ScreenDiagnostics},
+		{Key: "6", Label: "Settings", Description: "Configure aistack", Screen: ScreenSettings},
 		{Key: "?", Label: "Help", Description: "Show help", Screen: ScreenHelp},
 	}
 }

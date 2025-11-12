@@ -1,4 +1,4 @@
-# aistack log rotation configuration (EP-002)
+# aistack log rotation configuration
 # Manages structured JSON logs under /var/log/aistack
 
 /var/log/aistack/*.log {

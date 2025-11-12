@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### BREAKING CHANGES
+- **Complete removal of auto-suspend/idle detection feature**
+  - Removed `internal/idle` package (idle detection engine)
+  - Removed `internal/metrics` package (CPU/GPU metrics collection)
+  - Removed `internal/wol` package (Wake-on-LAN functionality)
+  - Removed `internal/agent` package (background agent service)
+  - Removed CLI commands: `agent`, `idle-check`, `metrics-test`, `wol-check`, `wol-setup`, `wol-send`, `wol-apply`, `wol-relay`
+  - Removed systemd units: `aistack-agent.service`, `aistack-idle.service`, `aistack-idle.timer`
+  - Removed config sections: `idle.*`, `power_estimation.*`, `wol.*`
+  - Removed TUI Power Management screen
+  - **Migration**: Run `cleanup_autosuspend.sh` script on existing installations to remove old components
+  - **Reason**: Simplification - focus on core service management functionality
+
+### Removed
+- Power management and auto-suspend features
+- Wake-on-LAN configuration and magic packet sending
+- Background agent and metrics collection
+- Idle detection and suspend triggering
+- State files: `idle_state.json`, `wol_config.json`
+
 ### Added
 - CI/CD pipeline with GitHub Actions (EP-019)
   - Automated lint, test, and build workflow

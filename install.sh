@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# aistack Bootstrap Installer (EP-002)
+# aistack Bootstrap Installer
 # Headless installation script for Ubuntu 24.04
 # Checks system requirements, installs Docker, deploys systemd units
 #
@@ -89,62 +89,43 @@ check_internet() {
 
 # Ensure Docker or Podman is available before proceeding
 ensure_container_runtime() {
-    log_info "Ensuring container runtime availability..."
+    log_info "Checking container runtime..."
 
-    if check_docker_installed; then
+    if command -v docker &> /dev/null; then
         CONTAINER_RUNTIME="docker"
-        log_event "bootstrap.runtime" "{\"runtime\":\"docker\",\"state\":\"detected\"}"
+        log_info "Docker detected"
+
+        # Always enable and start (idempotent in systemctl)
+        log_info "Ensuring Docker service is enabled and running..."
+        systemctl enable docker
+        systemctl start docker
+        sleep 2
+
+        if systemctl is-active --quiet docker; then
+            log_info "✓ Docker service is running"
+        else
+            log_error "Failed to start Docker service"
+            exit 1
+        fi
+
+        log_event "bootstrap.runtime" "{\"runtime\":\"docker\",\"state\":\"running\"}"
         return 0
     fi
 
     if command -v podman &> /dev/null; then
         CONTAINER_RUNTIME="podman"
-        log_info "Podman detected — Docker installation skipped (best-effort support)"
+        log_info "Podman detected — using Podman (best-effort support)"
         log_event "bootstrap.runtime" "{\"runtime\":\"podman\",\"state\":\"detected\"}"
         return 0
     fi
 
+    log_info "No container runtime found, installing Docker..."
     install_docker
-}
-
-# Check if Docker is already installed and running
-check_docker_installed() {
-    if command -v docker &> /dev/null; then
-        local docker_version=$(docker --version | awk '{print $3}' | tr -d ',')
-        log_info "Docker is already installed (version: $docker_version)"
-
-        if systemctl is-active --quiet docker; then
-            log_info "✓ Docker service is active (running)"
-            return 0
-        else
-            log_warn "Docker is installed but not running. Starting service..."
-            systemctl enable --now docker
-            sleep 2
-
-            if systemctl is-active --quiet docker; then
-                log_info "✓ Docker service started successfully"
-                return 0
-            else
-                log_error "Failed to start Docker service"
-                return 1
-            fi
-        fi
-    fi
-
-    return 1
 }
 
 # Install Docker
 install_docker() {
-    log_info "Installing Docker..."
-
-    # Check if already installed (idempotent)
-    if check_docker_installed; then
-        log_info "Docker installation check: already installed and running (idempotent)"
-        return 0
-    fi
-
-    log_info "Docker not found. Proceeding with installation..."
+    log_info "Installing Docker (always fresh install)..."
 
     # Update package index
     log_info "Updating package index..."
@@ -213,60 +194,39 @@ install_docker() {
     fi
 }
 
-# Detect GPU and build with appropriate flags
+# Build aistack binary (auto-detects CUDA) - ALWAYS rebuild
 build_aistack_binary() {
-    log_info "Building aistack binary..."
+    log_info "Building aistack binary (always fresh build)..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Check if binary already exists
-    if [[ -f "$script_dir/dist/aistack" ]]; then
-        log_info "✓ Binary already exists: $script_dir/dist/aistack"
-        return
-    fi
+    # Always clean and rebuild
+    log_info "Cleaning old build artifacts..."
+    (cd "$script_dir" && rm -rf ./dist)
 
-    # Detect NVIDIA GPU
-    if command -v nvidia-smi &> /dev/null; then
-        log_info "NVIDIA GPU detected, attempting CUDA build..."
-
-        # Check for CUDA toolkit
-        if [[ -d "/usr/local/cuda" ]] || [[ -d "/usr/lib/cuda" ]] || command -v nvcc &> /dev/null; then
-            log_info "CUDA Toolkit found, building with GPU support..."
-            if command -v make &> /dev/null; then
-                (cd "$script_dir" && make build-cuda) || {
-                    log_warn "CUDA build failed, falling back to non-GPU build"
-                    (cd "$script_dir" && make build)
-                }
-            else
-                log_warn "make not found, falling back to basic build"
-                (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
-            fi
-        else
-            log_info "CUDA Toolkit not found, building without GPU support"
-            log_info "For GPU support, install: sudo apt install nvidia-cuda-toolkit"
-            (cd "$script_dir" && make build) || {
-                (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
-            }
-        fi
+    # Build with auto-detection
+    if command -v make &> /dev/null; then
+        log_info "Building with auto-detection (make will detect CUDA if available)..."
+        (cd "$script_dir" && make build) || {
+            log_error "Build failed"
+            exit 1
+        }
     else
-        log_info "No NVIDIA GPU detected, building without GPU support"
-        if command -v make &> /dev/null; then
-            (cd "$script_dir" && make build)
-        else
-            (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
-        fi
+        log_warn "make not found, falling back to basic build without GPU support"
+        mkdir -p "$script_dir/dist"
+        (cd "$script_dir" && CGO_ENABLED=0 go build -tags netgo -ldflags "-s -w" -o ./dist/aistack ./cmd/aistack)
     fi
 
     log_info "✓ Binary built successfully"
 }
 
-# Install or update the aistack CLI binary under /usr/local/bin
+# Install or update the aistack CLI binary under /usr/local/bin - ALWAYS reinstall
 install_cli_binary() {
-    log_info "Installing aistack CLI binary..."
+    log_info "Installing aistack CLI binary (always fresh install)..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Build if binary doesn't exist
+    # Always rebuild
     build_aistack_binary
 
     local candidates=(
@@ -288,18 +248,17 @@ install_cli_binary() {
         exit 1
     fi
 
+    # Always overwrite
+    log_info "Copying binary to /usr/local/bin/aistack..."
     install -m 0755 "$source" /usr/local/bin/aistack
     log_info "✓ Installed CLI to /usr/local/bin/aistack"
 }
 
-# Ensure /etc/aistack/config.yaml exists with basic defaults
+# Create/overwrite /etc/aistack/config.yaml with defaults - ALWAYS overwrite
 ensure_config_defaults() {
     local config_path="/etc/aistack/config.yaml"
 
-    if [[ -f "$config_path" ]]; then
-        log_info "✓ Existing config preserved: $config_path"
-        return
-    fi
+    log_info "Writing fresh config to $config_path (always overwrite)..."
 
     cat > "$config_path" <<CONFIG
 container_runtime: ${CONTAINER_RUNTIME:-docker}
@@ -329,9 +288,9 @@ CONFIG
     log_info "✓ Created default config at $config_path"
 }
 
-# Deploy udev rules for persistent Wake-on-LAN configuration and RAPL permissions
+# Deploy udev rules for persistent Wake-on-LAN configuration and RAPL permissions - ALWAYS redeploy
 deploy_udev_rules() {
-    log_info "Deploying udev rules..."
+    log_info "Deploying udev rules (always overwrite)..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -340,7 +299,7 @@ deploy_udev_rules() {
     local wol_target="/etc/udev/rules.d/70-aistack-wol.rules"
 
     if [[ -f "$wol_source" ]]; then
-        cp "$wol_source" "$wol_target"
+        cp -f "$wol_source" "$wol_target"
         chmod 644 "$wol_target"
         log_info "✓ Deployed udev rule: $(basename "$wol_target")"
     else
@@ -352,25 +311,26 @@ deploy_udev_rules() {
     local rapl_target="/etc/udev/rules.d/80-aistack-rapl.rules"
 
     if [[ -f "$rapl_source" ]]; then
-        cp "$rapl_source" "$rapl_target"
+        cp -f "$rapl_source" "$rapl_target"
         chmod 644 "$rapl_target"
         log_info "✓ Deployed udev rule: $(basename "$rapl_target")"
     else
         log_warn "RAPL udev rule not found: $rapl_source"
     fi
 
-    # Reload udev rules
+    # Always reload udev rules and trigger
     if command -v udevadm &> /dev/null; then
+        log_info "Reloading and triggering udev rules..."
         udevadm control --reload-rules
         udevadm trigger --subsystem-match=net || true
         udevadm trigger --subsystem-match=powercap || true
-        log_info "✓ Reloaded udev rules"
+        log_info "✓ Reloaded and triggered udev rules"
     fi
 }
 
-# Deploy systemd-tmpfiles configuration for RAPL permissions
+# Deploy systemd-tmpfiles configuration for RAPL permissions - ALWAYS redeploy
 deploy_tmpfiles() {
-    log_info "Deploying systemd-tmpfiles configuration..."
+    log_info "Deploying systemd-tmpfiles configuration (always overwrite)..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local tmpfiles_source="$script_dir/assets/tmpfiles.d/aistack-rapl.conf"
@@ -381,12 +341,13 @@ deploy_tmpfiles() {
         return
     fi
 
-    cp "$tmpfiles_source" "$tmpfiles_target"
+    cp -f "$tmpfiles_source" "$tmpfiles_target"
     chmod 644 "$tmpfiles_target"
     log_info "✓ Deployed tmpfiles config: $(basename "$tmpfiles_target")"
 
-    # Apply tmpfiles configuration immediately
+    # Always apply tmpfiles configuration immediately
     if command -v systemd-tmpfiles &> /dev/null; then
+        log_info "Applying tmpfiles configuration..."
         systemd-tmpfiles --create "$tmpfiles_target" || {
             log_warn "Failed to apply tmpfiles config (non-critical)"
         }
@@ -394,29 +355,27 @@ deploy_tmpfiles() {
     fi
 }
 
-# Create aistack user and group
+# Create aistack user and group - ALWAYS recreate
 create_aistack_user() {
-    log_info "Creating aistack user and group..."
+    log_info "Ensuring aistack user and group exist..."
 
+    # Create user if not exists, update if exists
     if id "aistack" &>/dev/null; then
-        log_info "✓ User 'aistack' already exists (idempotent)"
+        log_info "User 'aistack' exists, ensuring configuration is correct..."
     else
         useradd -r -s /bin/false -d /var/lib/aistack aistack
         log_info "✓ Created system user 'aistack'"
     fi
 
-    # Add aistack user to docker group
-    if groups aistack | grep -q docker; then
-        log_info "✓ User 'aistack' already in docker group"
-    else
-        usermod -aG docker aistack
-        log_info "✓ Added 'aistack' to docker group"
-    fi
+    # Always ensure docker group membership
+    log_info "Ensuring 'aistack' user is in docker group..."
+    usermod -aG docker aistack 2>/dev/null || true
+    log_info "✓ User 'aistack' configured for docker access"
 }
 
-# Create necessary directories
+# Create necessary directories - ALWAYS recreate and set permissions
 create_directories() {
-    log_info "Creating directory structure..."
+    log_info "Creating directory structure (always fresh)..."
 
     local dirs=(
         "/var/lib/aistack"
@@ -425,82 +384,105 @@ create_directories() {
     )
 
     for dir in "${dirs[@]}"; do
-        if [[ -d "$dir" ]]; then
-            log_info "✓ Directory exists: $dir"
-        else
-            mkdir -p "$dir"
-            log_info "✓ Created directory: $dir"
-        fi
+        log_info "Ensuring directory exists: $dir"
+        mkdir -p "$dir"
     done
 
-    # Set ownership
+    # Always set ownership and permissions
+    log_info "Setting directory ownership and permissions..."
     chown -R aistack:aistack /var/lib/aistack
     chown -R aistack:aistack /var/log/aistack
     chown -R root:aistack /etc/aistack
     chmod 750 /etc/aistack
 
-    log_info "✓ Directory permissions configured"
+    log_info "✓ Directory structure configured"
 }
 
-# Deploy systemd units
-deploy_systemd_units() {
-    log_info "Deploying systemd units..."
+# Deploy Wake-on-LAN persistence
+deploy_wol_persistence() {
+    log_info "Deploying Wake-on-LAN persistence service..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local systemd_source="${script_dir}/assets/systemd"
+    local scripts_dir="${script_dir}/assets/scripts"
+    local systemd_dir="${script_dir}/assets/systemd"
 
-    if [[ ! -d "$systemd_source" ]]; then
-        log_error "systemd units directory not found: $systemd_source"
+    # Check if directories exist
+    if [[ ! -d "$scripts_dir" ]]; then
+        log_error "scripts directory not found: $scripts_dir"
+        exit 1
+    fi
+    if [[ ! -d "$systemd_dir" ]]; then
+        log_error "systemd directory not found: $systemd_dir"
         exit 1
     fi
 
-    # Copy service files
-    for unit_file in "$systemd_source"/*.{service,timer}; do
-        if [[ -f "$unit_file" ]]; then
-            local unit_name=$(basename "$unit_file")
-            cp "$unit_file" /etc/systemd/system/
-            log_info "✓ Deployed $unit_name"
-        fi
-    done
+    # Deploy WoL enable script
+    local wol_script="${scripts_dir}/enable-wol.sh"
+    if [[ ! -f "$wol_script" ]]; then
+        log_error "WoL script not found: $wol_script"
+        exit 1
+    fi
 
-    # Reload systemd
+    cp -f "$wol_script" /usr/local/bin/aistack-enable-wol.sh
+    chmod 755 /usr/local/bin/aistack-enable-wol.sh
+
+    # Deploy systemd service
+    cp -f "${systemd_dir}/aistack-wol-persist.service" /etc/systemd/system/
+    chmod 644 /etc/systemd/system/aistack-wol-persist.service
+
+    # Reload systemd daemon
     systemctl daemon-reload
-    log_info "✓ Reloaded systemd daemon"
 
-    # Enable and start agent service
-    if systemctl is-enabled --quiet aistack-agent.service 2>/dev/null; then
-        log_info "✓ aistack-agent.service already enabled"
-    else
-        systemctl enable aistack-agent.service
-        log_info "✓ Enabled aistack-agent.service"
-    fi
+    # Enable and start service
+    systemctl enable aistack-wol-persist.service
+    systemctl start aistack-wol-persist.service
 
-    # Start the service if not running
-    if systemctl is-active --quiet aistack-agent.service; then
-        log_info "✓ aistack-agent.service is already running"
-    else
-        systemctl start aistack-agent.service
-        sleep 1
-
-        if systemctl is-active --quiet aistack-agent.service; then
-            log_info "✓ Started aistack-agent.service"
-        else
-            log_error "Failed to start aistack-agent.service"
-            systemctl status aistack-agent.service --no-pager || true
-            exit 1
-        fi
-    fi
-
-    # Enable timer (but don't start yet - placeholder)
-    if [[ -f /etc/systemd/system/aistack-idle.timer ]]; then
-        systemctl enable aistack-idle.timer
-        log_info "✓ Enabled aistack-idle.timer (will activate after reboot)"
-    fi
+    log_info "✓ Wake-on-LAN persistence deployed and started"
+    log_info "  WoL will be automatically enabled on boot and after suspend"
+    log_info "  Check status: systemctl status aistack-wol-persist.service"
 }
 
-# Deploy logrotate configuration
+# Deploy systemd units for auto-suspend
+deploy_systemd_units() {
+    log_info "Deploying systemd units for auto-suspend..."
+
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local systemd_dir="${script_dir}/assets/systemd"
+
+    # Check if systemd directory exists
+    if [[ ! -d "$systemd_dir" ]]; then
+        log_error "systemd directory not found: $systemd_dir"
+        exit 1
+    fi
+
+    # Deploy service and timer
+    cp -f "${systemd_dir}/aistack-suspend.service" /etc/systemd/system/
+    cp -f "${systemd_dir}/aistack-suspend.timer" /etc/systemd/system/
+    cp -f "${systemd_dir}/aistack-suspend-resume.service" /etc/systemd/system/
+    chmod 644 /etc/systemd/system/aistack-suspend.service
+    chmod 644 /etc/systemd/system/aistack-suspend.timer
+    chmod 644 /etc/systemd/system/aistack-suspend-resume.service
+
+    # Reload systemd daemon
+    systemctl daemon-reload
+
+    # Enable and start timer (not service - timer triggers service)
+    systemctl enable aistack-suspend.timer
+    systemctl start aistack-suspend.timer
+
+    # Enable resume hook (triggers after suspend/resume)
+    systemctl enable aistack-suspend-resume.service
+
+    log_info "✓ systemd units deployed and timer started"
+    log_info "  Auto-suspend will activate after 5 minutes of idle time"
+    log_info "  Timer resets automatically after resume/wake-up"
+    log_info "  Check status: systemctl status aistack-suspend.timer"
+    log_info "  Disable: aistack suspend disable"
+}
+
+# Deploy logrotate configuration - ALWAYS redeploy
 deploy_logrotate() {
-    log_info "Deploying logrotate configuration..."
+    log_info "Deploying logrotate configuration (always overwrite)..."
 
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local logrotate_source="${script_dir}/assets/logrotate/aistack"
@@ -510,7 +492,7 @@ deploy_logrotate() {
         exit 1
     fi
 
-    cp "$logrotate_source" /etc/logrotate.d/aistack
+    cp -f "$logrotate_source" /etc/logrotate.d/aistack
     chmod 644 /etc/logrotate.d/aistack
     log_info "✓ Deployed logrotate configuration"
 
@@ -546,10 +528,11 @@ main() {
     ensure_config_defaults
 
     # Deploy configurations
-    deploy_systemd_units
     deploy_logrotate
     deploy_udev_rules
     deploy_tmpfiles
+    deploy_wol_persistence
+    deploy_systemd_units
 
     echo ""
     log_info "========================================="
@@ -557,9 +540,9 @@ main() {
     log_info "========================================="
     log_info ""
     log_info "Next steps:"
-    log_info "  1. Check service status: systemctl status aistack-agent"
-    log_info "  2. View logs: journalctl -u aistack-agent -f"
-    log_info "  3. Run aistack CLI: aistack --help"
+    log_info "  1. Run aistack CLI: aistack --help"
+    log_info "  2. Start TUI: aistack"
+    log_info "  3. Check service status: aistack status"
     log_info ""
     log_info "Bootstrap log: /tmp/aistack-bootstrap.log"
 }

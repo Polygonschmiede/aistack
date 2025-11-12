@@ -2,248 +2,235 @@
 
 > Headless AI service orchestrator with auto-suspend and Wake-on-LAN for power-efficient GPU workloads.
 
-**Status**: Early development (v0.1) - Foundation being built
+**Status**: Early development (v0.1) - Foundation complete, ready for testing
 
-## Overview
+## What is aistack?
 
-aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI, LocalAI) on Ubuntu 24.04 Linux systems with optional NVIDIA GPU support. It provides:
+aistack manages AI services (Ollama, Open WebUI, LocalAI) on Ubuntu 24.04 with:
 
-- **Container Orchestration**: Manage Ollama, Open WebUI, and LocalAI via Docker Compose
-- **GPU Management**: NVIDIA GPU detection, metrics, and exclusive locking to prevent VRAM conflicts
-- **Power Efficiency**: Automatic idle detection and suspend-to-RAM with Wake-on-LAN support
-- **Metrics Collection**: GPU/CPU utilization, temperature, and power consumption tracking
-- **TUI Interface**: Keyboard-driven terminal UI built with Bubble Tea (no mouse required)
-
-## Prerequisites
-
-- **OS**: Ubuntu 24.04 LTS (x86_64)
-- **Runtime**: Docker (default) or Podman (best-effort support)
-- **Build**: Go 1.22+ (required for building from source)
-- **Optional**: NVIDIA GPU with compatible drivers for GPU workloads
+- **Smart Power Management**: Auto-suspend when idle, Wake-on-LAN for remote wake-up
+- **GPU Management**: NVIDIA GPU detection, metrics, and exclusive locking
+- **Service Orchestration**: Docker Compose-based service lifecycle management
+- **TUI Interface**: Keyboard-driven terminal UI (no mouse required)
+- **Metrics & Monitoring**: Track GPU/CPU utilization, temperature, and power consumption
 
 ## Quick Start
 
-### Production Installation (Ubuntu 24.04)
+### Prerequisites
 
-**Goal**: Get all services running (green status) in ≤10 minutes.
+- Ubuntu 24.04 LTS (x86_64)
+- Docker (or Podman)
+- Go 1.22+ (for building from source)
+- Optional: NVIDIA GPU with drivers
 
-**Prerequisites**:
-- Fresh Ubuntu 24.04 LTS installation
-- Go 1.22+ installed (`sudo apt install golang-go`)
-- Docker installed (`sudo apt install docker.io docker-compose-v2`)
-- User added to docker group (`sudo usermod -aG docker $USER`, then logout/login)
-- For GPU support: NVIDIA drivers installed (`nvidia-smi` should work)
-
-**Step 1: Download and Build**
+### Installation
 
 ```bash
-# Download source from latest release
-wget https://github.com/polygonschmiede/aistack/archive/refs/tags/v0.1.0.tar.gz
-tar -xzf v0.1.0.tar.gz
-cd aistack-0.1.0
-
-# OR clone from repository
+# Clone repository
 git clone https://github.com/polygonschmiede/aistack.git
 cd aistack
 
-# Build binary
+# Build (auto-detects CUDA)
 make build
 
-# Install system-wide (requires sudo)
+# Install system-wide
 sudo ./install.sh
 
-# Verify installation
+# Verify
 aistack version
 ```
 
-> **Note**: Precompiled binaries will be available in future releases. Currently, you need Go 1.22+ installed to build from source.
-
-**Step 2: Install Services**
+### Install Services
 
 ```bash
-# Install with standard GPU profile (Ollama + Open WebUI + LocalAI)
+# Install all services (Ollama + Open WebUI + LocalAI)
 sudo aistack install --profile standard-gpu
 
-# OR install minimal profile (Ollama only)
+# OR minimal (Ollama only)
 sudo aistack install --profile minimal
 
 # Check status
 aistack status
-```
 
-**Step 3: Verify Services**
-
-```bash
-# All services should show "green" health
+# All services should show green
 aistack health
-
-# Access services:
-# - Ollama API: http://localhost:11434
-# - Open WebUI: http://localhost:3000
-# - LocalAI API: http://localhost:8080
 ```
 
-**Troubleshooting**:
-- If services show "red": Check `aistack logs <service>` for errors
-- If GPU not detected: Run `aistack gpu-check` to verify NVIDIA stack
-- If network errors: Ensure Docker network is up: `docker network ls | grep aistack`
-- For detailed diagnostics: `aistack diag` (creates ZIP with logs)
+### Access Services
 
-See [OPERATIONS.md](docs/OPERATIONS.md) for detailed troubleshooting playbooks.
+- **Ollama API**: http://localhost:11434
+- **Open WebUI**: http://localhost:3000
+- **LocalAI API**: http://localhost:8080
 
-### Development Build
-Install beforehand
-```bash
-sudo apt update
-sudo apt install golang-go make docker
-```
+## Usage
+
+### TUI (Interactive Mode)
 
 ```bash
-# Clone the repository
-git clone https://github.com/polygonschmiede/aistack.git
-cd aistack
-
-# Build (no GPU support)
-make build
-
-# OR: Build with GPU/CUDA support (requires nvidia-cuda-toolkit)
-sudo apt install nvidia-cuda-toolkit
-make build-cuda
-
-# Run locally (no installation)
-./dist/aistack
-
-# Or run with go
-make run
+aistack                    # Launch interactive TUI
 ```
 
-**Note**: The `install.sh` script automatically detects NVIDIA GPU and builds with CUDA support if available.
+Navigate with arrow keys or j/k, press numbers for shortcuts, q to quit.
 
-### Development Commands
+### Common Commands
 
+**Service Management:**
 ```bash
-make help          # Show all available commands
-make build         # Build binary (no GPU support)
-make build-cuda    # Build binary with CUDA/GPU support
-make test          # Run tests
-make lint          # Run linters
-make coverage      # Generate coverage report
+aistack status                        # Show all services
+aistack install <service>             # Install service
+aistack start/stop <service>          # Start/stop service
+aistack remove <service>              # Remove (keeps data)
+aistack remove <service> --purge      # Remove with data
+aistack update <service>              # Update with auto-rollback
+aistack logs <service> [lines]        # View logs
 ```
 
-### CLI Commands
-
+**System Management:**
 ```bash
-./aistack                          # Start TUI (default)
-./aistack agent                    # Run as background agent service
-./aistack idle-check               # Perform idle evaluation (timer-triggered)
-./aistack install --profile <name> # Install from profile (standard-gpu, minimal)
-./aistack install <service>        # Install specific service (ollama, openwebui, localai)
-./aistack start <service>          # Start a service
-./aistack stop <service>           # Stop a service
-./aistack update <service>         # Update service to latest (with rollback)
-./aistack backend <ollama|localai> # Switch Open WebUI backend (restarts service)
-./aistack logs <service> [lines]   # Show service logs (default: 100 lines)
-./aistack remove <service> [--purge] # Remove a service (keeps data by default)
-./aistack status                   # Show status of all services
-./aistack gpu-check                # Check GPU and NVIDIA stack
-./aistack metrics-test             # Test metrics collection (3 samples)
-./aistack wol-check                # Check Wake-on-LAN status
-./aistack wol-setup <iface>        # Enable Wake-on-LAN (requires root)
-./aistack wol-send <mac> [ip]      # Send Wake-on-LAN magic packet
-./aistack version                  # Show version
-./aistack help                     # Show all commands
+aistack health [--save]               # Health check
+aistack repair <service>              # Repair unhealthy service
+aistack backend <ollama|localai>      # Switch Open WebUI backend
+aistack gpu-check                     # Check GPU status
+aistack diag                          # Create diagnostic ZIP
 ```
 
-## Project Status
-
-Currently implementing foundational epics:
-
-- ✅ **EP-001**: Repository & Tech Baseline (Go + TUI skeleton)
-- ✅ **EP-002**: Bootstrap & System Integration (install.sh + systemd)
-- ✅ **EP-003**: Container Runtime & Compose Assets (Docker Compose)
-- ✅ **EP-004**: NVIDIA Stack Detection (NVML integration)
-- ✅ **EP-005**: Metrics & Sensors (CPU/GPU/Power monitoring)
-- ✅ **EP-006**: Idle Engine & Autosuspend (Sliding window detection)
-- ✅ **EP-007**: Wake-on-LAN Setup (WoL detection, magic packet sender)
-- ✅ **EP-008**: Ollama Orchestration (Lifecycle + Update/Rollback)
-- ✅ **EP-009**: Open WebUI Orchestration (Backend-Switch: Ollama ↔ LocalAI)
-- ✅ **EP-010**: LocalAI Orchestration (Lifecycle + Remove with Volume Handling)
-
-See `docs/features/epics.md` for complete roadmap.
-
-## Architecture
-
+**Power Management:**
+```bash
+aistack agent                         # Run as background service
+aistack idle-check                    # Manual idle check
+aistack wol-check                     # Check Wake-on-LAN
+aistack wol-setup <interface>         # Enable Wake-on-LAN
+aistack wol-send <mac> [ip]           # Send magic packet
 ```
-aistack/
-├── cmd/aistack/           # CLI + TUI entry point
-├── internal/              # Private application code
-│   ├── agent/            # Background agent runtime + idle orchestration
-│   ├── config/           # Config loading, validation, defaults
-│   ├── configdir/        # Cross-platform config/state path helpers
-│   ├── diag/             # Diagnostics + zip-pack generator
-│   ├── gpu/              # GPU detection, NVML helpers, toolkit checks
-│   ├── gpulock/          # Exclusive GPU lock + health enforcement
-│   ├── idle/             # Idle engine, suspend executor, WoL gating
-│   ├── logging/          # Structured JSON logger
-│   ├── metrics/          # CPU/GPU metrics collectors + JSONL writer
-│   ├── models/           # Ollama / LocalAI model inventory + eviction
-│   ├── secrets/          # AES-GCM secret storage for service creds
-│   ├── services/         # Compose orchestration & lifecycle helpers
-│   ├── tui/              # Bubble Tea UI
-│   └── wol/              # Wake-on-LAN setup, relay server, CLI cmds
-├── assets/               # systemd units, tmpfiles, logrotate, udev
-├── compose/              # Docker Compose templates
-└── docs/                 # Documentation and guides
+
+**Configuration:**
+```bash
+aistack config test [path]            # Validate config
+aistack versions                      # Show version lock status
 ```
+
+See `aistack help` for all commands.
 
 ## Configuration
 
-System-wide config: `/etc/aistack/config.yaml`
+System config: `/etc/aistack/config.yaml`
 User config: `~/.aistack/config.yaml`
 
-Key settings:
-- `container_runtime`: Docker or Podman
-- `idle.*`: CPU/GPU thresholds, timeout
-- `wol.*`: Wake-on-LAN interface and MAC
-- `gpu_lock`: Exclusive GPU access control
+Example:
+```yaml
+container_runtime: docker
+profile: standard-gpu
+gpu_lock: true
 
-Environment overrides:
-- `AISTACK_COMPOSE_DIR` — absolute or relative path to packaged Compose bundles (defaults to the binary’s `compose/` directory).
-- `AISTACK_LOG_DIR` — writable directory for JSON/JSONL output such as `metrics.log` (defaults to `/var/log/aistack`, then falls back to a temp dir when unavailable).
-- `AISTACK_STATE_DIR` — idle state persistence root for developer runs; systemd deployments remain rooted at `/var/lib/aistack`.
+idle:
+  cpu_idle_threshold: 10
+  gpu_idle_threshold: 5
+  idle_timeout_seconds: 1800
+
+wol:
+  interface: eth0
+  mac: "AA:BB:CC:DD:EE:FF"
+
+updates:
+  mode: rolling  # or "pinned"
+```
+
+See `config.yaml.example` for all options.
+
+### Version Locking
+
+Pin service versions in `/etc/aistack/versions.lock`:
+
+```
+# Use digests for reproducible deployments
+ollama:ollama/ollama@sha256:abc123...
+openwebui:ghcr.io/open-webui/open-webui@sha256:def456...
+
+# Or specific tags
+localai:quay.io/go-skynet/local-ai:v2.8.0
+```
 
 ## Development
 
-See [AGENTS.md](AGENTS.md) for contributor guidelines and [CLAUDE.md](CLAUDE.md) for AI-assisted development context.
+### Build & Test
 
-**Testing**:
 ```bash
-go test ./...              # Unit tests
-go test ./... -race        # Race detector
-go test ./... -cover       # Coverage
+make build         # Build (auto-detects CUDA)
+make build-no-cuda # Force build without CUDA
+make test          # Run tests
+make race          # Race detector
+make coverage      # Coverage report
+make lint          # Linters
+make run           # Run without building
 ```
 
-**Code Style**:
+### Project Structure
+
+```
+aistack/
+├── cmd/aistack/           # CLI entry point
+├── internal/              # Core application
+│   ├── agent/            # Background agent + orchestration
+│   ├── config/           # Configuration
+│   ├── services/         # Docker Compose lifecycle
+│   ├── metrics/          # CPU/GPU metrics collection
+│   ├── idle/             # Idle detection + suspend
+│   ├── gpu/              # GPU detection + NVML
+│   ├── wol/              # Wake-on-LAN
+│   ├── tui/              # Terminal UI
+│   └── ...               # (diag, secrets, logging, etc.)
+├── compose/              # Docker Compose templates
+└── docs/                 # Documentation
+```
+
+### Code Style
+
 - Run `go fmt ./...` before commits
-- Follow guidelines in `docs/cheat-sheets/golangbp.md`
-- Use conventional commits (`feat:`, `fix:`, `refactor:`)
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`
+- See [AGENTS.md](AGENTS.md) for contributor guidelines
+- See [CLAUDE.md](CLAUDE.md) for AI development context
 
-## Work Log
+## Documentation
 
-All development sessions are tracked in `status.md` for continuity and historical context.
+- **[OPERATIONS.md](docs/OPERATIONS.md)**: Operations guide for administrators
+- **[POWER_AND_WOL.md](docs/POWER_AND_WOL.md)**: Power management & Wake-on-LAN guide
+- **[docs/features/epics.md](docs/features/epics.md)**: Feature roadmap
+
+## Troubleshooting
+
+**Services show red:**
+```bash
+aistack logs <service>     # Check logs
+aistack repair <service>   # Attempt repair
+```
+
+**GPU not detected:**
+```bash
+aistack gpu-check          # Verify NVIDIA stack
+nvidia-smi                 # Check drivers
+```
+
+**Network issues:**
+```bash
+docker network ls | grep aistack   # Check network
+aistack diag                       # Generate diagnostic package
+```
+
+See [OPERATIONS.md](docs/OPERATIONS.md) for detailed troubleshooting.
+
+## Roadmap
+
+- ✅ Foundation (TUI, Docker integration, GPU detection)
+- ✅ Service orchestration (Ollama, Open WebUI, LocalAI)
+- ✅ Power management (idle detection, auto-suspend, WoL)
+- 🚧 Model management and caching
+- 🚧 Advanced monitoring and alerting
+- 🎯 v1.0: Production-ready release
 
 ## License
 
 [License Type] - See [LICENSE](LICENSE) for details.
 
-## Roadmap
-
-- **v0.1**: Foundation (TUI, Docker integration, basic GPU detection)
-- **v0.2**: Service orchestration (Ollama, Open WebUI, LocalAI)
-- **v0.3**: Power management (idle detection, auto-suspend, WoL)
-- **v0.4**: Model management and caching
-- **v1.0**: Production-ready with full epic implementation
-
 ---
 
-**Note**: This is a headless/server tool designed for SSH access, not desktop environments. Designed for nerdy early adopters who understand Linux system administration.
+**Note**: Designed for headless servers with SSH access, not desktop environments. For nerdy early adopters who understand Linux system administration.

@@ -1,0 +1,26 @@
+[Unit]
+Description=aistack Wake-on-LAN Persistence
+Documentation=https://github.com/polygonschmiede/aistack
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aistack-enable-wol.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aistack-wol
+
+# Run as root (required for ethtool)
+User=root
+Group=root
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target suspend.target

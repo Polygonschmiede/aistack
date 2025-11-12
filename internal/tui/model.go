@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"aistack/internal/gpu"
-	"aistack/internal/idle"
 	"aistack/internal/logging"
 	"aistack/internal/services"
 )
@@ -38,10 +36,6 @@ type Model struct {
 	hasGPUReport bool
 	gpuError     string
 
-	idleState    idle.IdleState
-	hasIdleState bool
-	idleError    string
-
 	backend      services.BackendType
 	backendURL   string
 	backendError string
@@ -64,10 +58,6 @@ type Model struct {
 	modelsList      string // Cached models list display
 	modelsStats     string // Cached stats display
 	modelsMessage   string // Status message
-
-	// Power Screen State
-	powerConfig  idle.IdleConfig // Current configuration
-	powerMessage string          // Status message
 }
 
 const down = "down"
@@ -102,10 +92,8 @@ func NewModel(logger *logging.Logger, composeDir string) Model {
 	}
 
 	// Load system state
-	m.loadIdleState()
 	m.loadBackend()
 	m.loadGPU()
-	m.loadPowerConfig()
 
 	return m
 }
@@ -156,10 +144,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if next, handled := m.handleModelsScreenKeys(keyMsg.String()); handled {
-		return next, nil
-	}
-
-	if next, handled := m.handlePowerScreenKeys(keyMsg.String()); handled {
 		return next, nil
 	}
 
@@ -329,20 +313,6 @@ func (m Model) handleModelsScreenKeys(key string) (tea.Model, bool) {
 	return m, false
 }
 
-func (m Model) handlePowerScreenKeys(key string) (tea.Model, bool) {
-	if m.currentScreen != ScreenPower {
-		return m, false
-	}
-
-	switch key {
-	case "t":
-		return m.toggleSuspend(), true
-	case "r":
-		return m.refreshPowerScreen(), true
-	}
-	return m, false
-}
-
 // View renders the TUI
 // Story T-024: Routes to appropriate screen renderer
 func (m Model) View() string {
@@ -359,8 +329,6 @@ func (m Model) View() string {
 		return m.renderInstallScreen()
 	case ScreenModels:
 		return m.renderModelsScreen()
-	case ScreenPower:
-		return m.renderPowerScreen()
 	case ScreenLogs:
 		return m.renderLogsScreen()
 	case ScreenDiagnostics:
@@ -414,27 +382,6 @@ func (m *Model) loadGPU() {
 	}
 
 	m.gpuError = ""
-}
-
-// loadIdleState loads idle engine state
-func (m *Model) loadIdleState() {
-	idleConfig := idle.DefaultIdleConfig()
-	manager := idle.NewStateManager(idleConfig.StateFilePath, m.logger)
-
-	state, err := manager.Load()
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			m.idleError = "Idle state not recorded yet"
-		} else {
-			m.idleError = err.Error()
-		}
-		m.hasIdleState = false
-		return
-	}
-
-	m.idleState = state
-	m.hasIdleState = true
-	m.idleError = ""
 }
 
 // loadBackend loads backend binding information
@@ -516,7 +463,6 @@ func (m Model) toggleBackend() Model {
 
 // refresh refreshes all system state
 func (m Model) refresh() Model {
-	m.loadIdleState()
 	m.loadBackend()
 	m.loadGPU()
 	m.statusMessage = "Refreshed system state"
@@ -544,41 +490,6 @@ func (m Model) renderGPUSection(labelStyle, valueStyle, errorStyle lipgloss.Styl
 
 	for _, gpuInfo := range m.gpuReport.GPUs {
 		b.WriteString(fmt.Sprintf("  • %s (%d MB)\n", valueStyle.Render(gpuInfo.Name), gpuInfo.MemoryMB))
-	}
-
-	return b.String()
-}
-
-// renderIdleSection renders the idle section
-func (m Model) renderIdleSection(labelStyle, valueStyle, errorStyle lipgloss.Style) string {
-	if m.idleError != "" {
-		return errorStyle.Render(m.idleError) + "\n"
-	}
-
-	if !m.hasIdleState {
-		return valueStyle.Render("Idle engine warming up") + "\n"
-	}
-
-	state := m.idleState
-	var b strings.Builder
-	b.WriteString(labelStyle.Render("Status: "))
-	b.WriteString(valueStyle.Render(capitalize(state.Status)))
-	b.WriteString("  ")
-	b.WriteString(labelStyle.Render("Idle for: "))
-	b.WriteString(valueStyle.Render(m.prettyDuration(time.Duration(state.IdleForSeconds) * time.Second)))
-	b.WriteString("\n")
-
-	b.WriteString(labelStyle.Render("CPU idle: "))
-	b.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%", state.CPUIdlePct)))
-	b.WriteString("  ")
-	b.WriteString(labelStyle.Render("GPU idle: "))
-	b.WriteString(valueStyle.Render(fmt.Sprintf("%.1f%%", state.GPUIdlePct)))
-	b.WriteString("\n")
-
-	if len(state.GatingReasons) > 0 {
-		b.WriteString(labelStyle.Render("Gating: "))
-		b.WriteString(valueStyle.Render(strings.Join(state.GatingReasons, ", ")))
-		b.WriteString("\n")
 	}
 
 	return b.String()
@@ -814,32 +725,6 @@ func (m Model) refreshModelsScreen() Model {
 	m.modelsList = ""
 	m.modelsStats = ""
 	m.modelsMessage = "Screen refreshed"
-	return m
-}
-
-// loadPowerConfig loads the power/idle configuration
-func (m *Model) loadPowerConfig() {
-	m.powerConfig = idle.DefaultIdleConfig()
-}
-
-// toggleSuspend toggles the suspend enable flag
-func (m Model) toggleSuspend() Model {
-	m.powerConfig.EnableSuspend = !m.powerConfig.EnableSuspend
-
-	status := "disabled"
-	if m.powerConfig.EnableSuspend {
-		status = "enabled"
-	}
-	m.powerMessage = fmt.Sprintf("Auto-suspend %s", status)
-
-	return m
-}
-
-// refreshPowerScreen refreshes the power screen
-func (m Model) refreshPowerScreen() Model {
-	m.loadPowerConfig()
-	m.loadIdleState() // Reload current idle state
-	m.powerMessage = "Configuration and idle state refreshed"
 	return m
 }
 

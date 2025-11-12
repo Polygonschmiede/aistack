@@ -1,0 +1,25 @@
+[Unit]
+Description=aistack Suspend Resume Hook (Reset Activity Timer)
+Documentation=https://github.com/polygonschmiede/aistack
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aistack suspend reset
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aistack-suspend-resume
+
+# Run as root (required for state file access)
+User=root
+Group=root
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/aistack /var/log/aistack
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
