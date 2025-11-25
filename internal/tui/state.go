@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -64,8 +65,8 @@ func (m *UIStateManager) Load() (*UIState, error) {
 // Save saves the UI state to disk
 func (m *UIStateManager) Save(state *UIState) error {
 	// Ensure state directory exists
-	if err := os.MkdirAll(m.stateDir, 0o750); err != nil {
-		return fmt.Errorf("failed to create state directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(m.stateDir); err != nil {
+		return err
 	}
 
 	// Update timestamp
@@ -78,20 +79,9 @@ func (m *UIStateManager) Save(state *UIState) error {
 
 	statePath := m.getStatePath()
 
-	// Atomic write: write to temp file, then rename
-	tmpPath := statePath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temp state file: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, statePath); err != nil {
-		if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			m.logger.Warn("tui.state.tmp_cleanup_failed", "Failed to remove temp state file", map[string]interface{}{
-				"error": removeErr.Error(),
-				"path":  tmpPath,
-			})
-		}
-		return fmt.Errorf("failed to rename state file: %w", err)
+	// Atomic write
+	if err := fsutil.AtomicWriteFile(statePath, data, fsutil.DefaultFilePermissions, m.logger); err != nil {
+		return err
 	}
 
 	m.logger.Debug("tui.state.saved", "UI state saved", map[string]interface{}{

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aistack/internal/configdir"
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -29,14 +30,10 @@ type PurgeManager struct {
 
 // NewPurgeManager creates a new purge manager
 func NewPurgeManager(manager *Manager, logger *logging.Logger) *PurgeManager {
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
-	}
 	return &PurgeManager{
 		manager:  manager,
 		logger:   logger,
-		stateDir: stateDir,
+		stateDir: fsutil.GetStateDir(fsutil.DefaultStateDir),
 	}
 }
 
@@ -235,8 +232,8 @@ func (pm *PurgeManager) SaveUninstallLog(log *UninstallLog, path string) error {
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("failed to create log directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(dir); err != nil {
+		return err
 	}
 
 	if err := os.WriteFile(path, data, 0o640); err != nil {

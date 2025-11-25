@@ -13,6 +13,7 @@ import (
 
 	"aistack/internal/config"
 	"aistack/internal/diag"
+	"aistack/internal/fsutil"
 	"aistack/internal/gpu"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
@@ -888,12 +889,7 @@ func runGPUCheck() {
 func runGPUUnlock() {
 	logger := logging.NewLogger(logging.LevelInfo)
 
-	// Get state directory from env or use default
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
-	}
-
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 	manager := gpulock.NewManager(stateDir, logger)
 
 	// Check current lock status
@@ -1246,7 +1242,7 @@ func runModelsList() {
 		os.Exit(1)
 	}
 
-	stateDir := getStateDir()
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 
 	var modelsList []models.ModelInfo
 	var err error
@@ -1317,7 +1313,7 @@ func runModelsDownload() {
 		os.Exit(1)
 	}
 
-	stateDir := getStateDir()
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 	manager := models.NewOllamaManager(stateDir, logger)
 
 	fmt.Printf("Downloading model: %s\n", modelName)
@@ -1388,7 +1384,7 @@ func runModelsDelete() {
 		os.Exit(1)
 	}
 
-	stateDir := getStateDir()
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 
 	fmt.Printf("⚠️  Warning: This will permanently delete model: %s\n", modelName)
 	fmt.Printf("Provider: %s\n", provider)
@@ -1442,7 +1438,7 @@ func runModelsStats() {
 		os.Exit(1)
 	}
 
-	stateDir := getStateDir()
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 
 	var stats *models.CacheStats
 	var err error
@@ -1493,7 +1489,7 @@ func runModelsEvictOldest() {
 		os.Exit(1)
 	}
 
-	stateDir := getStateDir()
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 
 	var evicted *models.ModelInfo
 	var err error
@@ -1532,15 +1528,6 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-
-// getStateDir returns the state directory
-func getStateDir() string {
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
-	}
-	return stateDir
 }
 
 // printUsage displays usage information

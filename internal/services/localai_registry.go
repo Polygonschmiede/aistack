@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -33,8 +34,8 @@ func NewLocalAIModelsRegistry(stateDir string, logger *logging.Logger) *LocalAIM
 
 // Ensure ensures the registry file exists with a valid structure
 func (r *LocalAIModelsRegistry) Ensure() error {
-	if err := os.MkdirAll(filepath.Dir(r.path), 0o750); err != nil {
-		return fmt.Errorf("failed to create registry directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(filepath.Dir(r.path)); err != nil {
+		return err
 	}
 
 	cleanPath := filepath.Clean(r.path)
@@ -68,8 +69,8 @@ func (r *LocalAIModelsRegistry) Ensure() error {
 
 // Update replaces the registry contents with the provided model list
 func (r *LocalAIModelsRegistry) Update(models []LocalAIModel) error {
-	if err := os.MkdirAll(filepath.Dir(r.path), 0o750); err != nil {
-		return fmt.Errorf("failed to create registry directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(filepath.Dir(r.path)); err != nil {
+		return err
 	}
 
 	doc := struct {

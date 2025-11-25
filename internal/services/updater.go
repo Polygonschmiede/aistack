@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -261,8 +262,8 @@ func (u *ServiceUpdater) Rollback(plan *UpdatePlan) error {
 func (u *ServiceUpdater) savePlan(plan *UpdatePlan) error {
 	// Ensure state directory exists
 	stateDir := filepath.Clean(u.stateDir)
-	if err := os.MkdirAll(stateDir, 0o750); err != nil {
-		return fmt.Errorf("failed to create state directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(stateDir); err != nil {
+		return err
 	}
 
 	planPath := filepath.Join(stateDir, fmt.Sprintf("%s_update_plan.json", u.service.Name()))

@@ -7,15 +7,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
 const (
 	// IdleTimeoutSeconds is the duration of idle time required before suspend
 	IdleTimeoutSeconds = 300 // 5 minutes
-
-	// Default state directory
-	defaultStateDir = "/var/lib/aistack"
 )
 
 // State holds suspend configuration and activity tracking
@@ -30,19 +28,9 @@ type Manager struct {
 	stateFile string
 }
 
-// getStateDir returns the state directory path (respects AISTACK_STATE_DIR env var)
-func getStateDir() string {
-	if env := os.Getenv("AISTACK_STATE_DIR"); env != "" {
-		if abs, err := filepath.Abs(env); err == nil {
-			return abs
-		}
-	}
-	return defaultStateDir
-}
-
 // NewManager creates a new state manager
 func NewManager(logger *logging.Logger) *Manager {
-	stateDir := getStateDir()
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 	return &Manager{
 		logger:    logger,
 		stateFile: filepath.Join(stateDir, "suspend_state.json"),
@@ -90,8 +78,8 @@ func (m *Manager) LoadState() (*State, error) {
 func (m *Manager) SaveState(state *State) error {
 	// Ensure state directory exists
 	stateDir := filepath.Dir(m.stateFile)
-	if err := os.MkdirAll(stateDir, 0750); err != nil {
-		return fmt.Errorf("create state directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(stateDir); err != nil {
+		return err
 	}
 
 	// Marshal JSON
@@ -100,15 +88,9 @@ func (m *Manager) SaveState(state *State) error {
 		return fmt.Errorf("marshal state JSON: %w", err)
 	}
 
-	// Write to temp file first (atomic write)
-	tempFile := m.stateFile + ".tmp"
-	if err := os.WriteFile(tempFile, data, 0640); err != nil {
-		return fmt.Errorf("write temp state file: %w", err)
-	}
-
-	// Atomic rename
-	if err := os.Rename(tempFile, m.stateFile); err != nil {
-		return fmt.Errorf("rename state file: %w", err)
+	// Atomic write
+	if err := fsutil.AtomicWriteFile(m.stateFile, data, 0640, m.logger); err != nil {
+		return err
 	}
 
 	m.logger.Debug("suspend.state.saved", "Saved suspend state", map[string]interface{}{

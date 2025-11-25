@@ -1,8 +1,7 @@
 package services
 
 import (
-	"os"
-
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -27,12 +26,7 @@ func NewOllamaService(composeDir string, runtime Runtime, logger *logging.Logger
 
 	base := NewBaseService("ollama", composeDir, healthCheck, volumes, runtime, logger)
 
-	// Get state directory from env or use default
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = defaultStateDir
-	}
-
+	stateDir := fsutil.GetStateDir(defaultStateDir)
 	updater := NewServiceUpdater(base, runtime, OllamaImageName, healthCheck, logger, stateDir, lock)
 
 	base.SetPreStartHook(func() error {

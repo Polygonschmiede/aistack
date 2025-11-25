@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -22,8 +23,8 @@ type SecretStore struct {
 // NewSecretStore creates a new secret store
 func NewSecretStore(config SecretStoreConfig, logger *logging.Logger) (*SecretStore, error) {
 	// Ensure secrets directory exists with proper permissions
-	if err := os.MkdirAll(config.SecretsDir, 0o750); err != nil {
-		return nil, fmt.Errorf("failed to create secrets directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(config.SecretsDir); err != nil {
+		return nil, err
 	}
 
 	// Load or generate passphrase
@@ -274,8 +275,8 @@ func loadOrGeneratePassphrase(path string) (string, error) {
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", fmt.Errorf("failed to create passphrase directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(dir); err != nil {
+		return "", err
 	}
 
 	// Write passphrase with strict permissions

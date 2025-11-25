@@ -68,11 +68,7 @@ const dirNotResolved = "Error: Compose directory not resolved"
 // NewModel creates a new TUI model with preloaded system insights
 // Story T-024: Initializes with main menu screen
 func NewModel(logger *logging.Logger, composeDir string) Model {
-	// Determine state directory
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = "/var/lib/aistack"
-	}
+	stateDir := fsutil.GetStateDir(fsutil.DefaultStateDir)
 
 	m := Model{
 		startTime:     time.Now(),

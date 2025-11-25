@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"aistack/internal/config"
+	"aistack/internal/fsutil"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 )
@@ -32,11 +33,7 @@ func NewManager(composeDir string, logger *logging.Logger) (*Manager, error) {
 		return nil, err
 	}
 
-	// Get state directory from env or use default
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = defaultStateDir
-	}
+	stateDir := fsutil.GetStateDir(defaultStateDir)
 
 	// Create GPU lock manager
 	gpuLockManager := gpulock.NewManager(stateDir, logger)
@@ -227,10 +224,7 @@ func (m *Manager) UpdateAllServices() (*UpdateAllResult, error) {
 			}
 		} else {
 			// Check if image actually changed by looking at the update plan
-			stateDir := os.Getenv("AISTACK_STATE_DIR")
-			if stateDir == "" {
-				stateDir = defaultStateDir
-			}
+			stateDir := fsutil.GetStateDir(defaultStateDir)
 
 			plan, loadErr := LoadUpdatePlan(serviceName, stateDir)
 			_ = loadErr // Error can be safely ignored, we just check if plan exists

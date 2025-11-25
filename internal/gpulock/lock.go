@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/logging"
 )
 
@@ -230,8 +231,8 @@ func (m *Manager) loadLock() (*LockInfo, error) {
 // saveLock saves the lock information to disk
 func (m *Manager) saveLock(lock *LockInfo) error {
 	// Ensure state directory exists
-	if err := os.MkdirAll(m.stateDir, 0o750); err != nil {
-		return fmt.Errorf("failed to create state directory: %w", err)
+	if err := fsutil.EnsureStateDirectory(m.stateDir); err != nil {
+		return err
 	}
 
 	data, err := json.MarshalIndent(lock, "", "  ")
@@ -241,21 +242,6 @@ func (m *Manager) saveLock(lock *LockInfo) error {
 
 	lockPath := m.getLockPath()
 
-	// Atomic write: write to temp file, then rename
-	tmpPath := lockPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
-		return fmt.Errorf("failed to write temp lock file: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, lockPath); err != nil {
-		if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			m.logger.Warn("gpu.lock.cleanup_failed", "Failed to remove temp lock file", map[string]interface{}{
-				"error": removeErr.Error(),
-				"path":  tmpPath,
-			})
-		}
-		return fmt.Errorf("failed to rename lock file: %w", err)
-	}
-
-	return nil
+	// Atomic write
+	return fsutil.AtomicWriteFile(lockPath, data, fsutil.DefaultFilePermissions, m.logger)
 }

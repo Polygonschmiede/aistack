@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 )
@@ -30,12 +31,7 @@ func NewLocalAIService(composeDir string, runtime Runtime, logger *logging.Logge
 
 	base := NewBaseService("localai", composeDir, healthCheck, volumes, runtime, logger)
 
-	// Get state directory from env or use default
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = defaultStateDir
-	}
-
+	stateDir := fsutil.GetStateDir(defaultStateDir)
 	updater := NewServiceUpdater(base, runtime, LocalAIImageName, healthCheck, logger, stateDir, lock)
 	registry := NewLocalAIModelsRegistry(stateDir, logger)
 

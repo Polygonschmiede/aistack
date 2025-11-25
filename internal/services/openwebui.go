@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"aistack/internal/fsutil"
 	"aistack/internal/gpulock"
 	"aistack/internal/logging"
 )
@@ -31,12 +32,7 @@ func NewOpenWebUIService(composeDir string, runtime Runtime, logger *logging.Log
 
 	base := NewBaseService("openwebui", composeDir, healthCheck, volumes, runtime, logger)
 
-	// Get state directory from env or use default
-	stateDir := os.Getenv("AISTACK_STATE_DIR")
-	if stateDir == "" {
-		stateDir = defaultStateDir
-	}
-
+	stateDir := fsutil.GetStateDir(defaultStateDir)
 	updater := NewServiceUpdater(base, runtime, OpenWebUIImageName, healthCheck, logger, stateDir, lock)
 	bindingManager := NewBackendBindingManager(stateDir, logger)
 

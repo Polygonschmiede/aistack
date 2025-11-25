@@ -1,7 +1,9 @@
 package services
 
+import "aistack/internal/fsutil"
+
 const (
-	defaultStateDir      = "/var/lib/aistack"
+	defaultStateDir      = fsutil.DefaultStateDir
 	planStatusPending    = "pending"
 	planStatusCompleted  = "completed"
 	planStatusFailed     = "failed"
