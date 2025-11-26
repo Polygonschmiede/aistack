@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-aistack is a Go-based TUI/CLI tool for managing AI services (Ollama, Open WebUI, LocalAI) with container orchestration, GPU management, power monitoring, and auto-suspend capabilities. Target platform: Ubuntu 24.04 Linux with optional NVIDIA GPU support.
+aistack is a Go-based CLI tool for managing AI services (Ollama, Open WebUI, LocalAI) with container orchestration, GPU management, power monitoring, and auto-suspend capabilities. Target platform: Ubuntu 24.04 Linux with optional NVIDIA GPU support.
 
 ## Quick Reference
 
@@ -63,8 +63,7 @@ aistack/
 │   ├── idle/         # Idle detection + suspend
 │   ├── gpu/          # NVIDIA detection + NVML
 │   ├── wol/          # Wake-on-LAN
-│   ├── models/       # Model inventory/eviction
-│   └── tui/          # Bubble Tea UI
+│   └── models/       # Model inventory/eviction
 ├── compose/          # Service templates
 └── README.md         # Complete documentation
 ```

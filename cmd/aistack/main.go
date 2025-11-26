@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-
 	"aistack/internal/config"
 	"aistack/internal/diag"
 	"aistack/internal/fsutil"
@@ -20,7 +18,6 @@ import (
 	"aistack/internal/models"
 	"aistack/internal/services"
 	"aistack/internal/suspend"
-	"aistack/internal/tui"
 )
 
 const (
@@ -31,7 +28,7 @@ const (
 
 func main() {
 	if len(os.Args) <= 1 {
-		runTUI()
+		printUsage()
 		return
 	}
 
@@ -195,46 +192,6 @@ func displayVersionLockContents(path string) {
 	if !hasEntries {
 		fmt.Println("    (empty lock file)")
 	}
-}
-
-// runTUI starts the interactive TUI mode
-func runTUI() {
-	// Initialize logger
-	logger := logging.NewLogger(logging.LevelInfo)
-
-	// Log app.started event
-	startTime := time.Now()
-	logger.Info("app.started", "Application started", map[string]interface{}{
-		"version": version,
-		"ts":      startTime.UTC().Format(time.RFC3339),
-	})
-
-	composeDir := resolveComposeDir()
-
-	// Create and run the TUI
-	p := tea.NewProgram(tui.NewModel(logger, composeDir))
-
-	// Run the program and capture exit reason
-	finalModel, err := p.Run()
-	exitReason := "normal"
-
-	if err != nil {
-		exitReason = "error"
-		logger.Error("app.error", "Application error", map[string]interface{}{
-			"error": err.Error(),
-		})
-		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Ensure we got our model type back
-	_ = finalModel
-
-	// Log app.exited event
-	logger.Info("app.exited", "Application exited", map[string]interface{}{
-		"ts":     time.Now().UTC().Format(time.RFC3339),
-		"reason": exitReason,
-	})
 }
 
 // runInstall installs services based on profile or individual service
@@ -1535,7 +1492,7 @@ func printUsage() {
 	fmt.Printf(`aistack - AI Stack Management Tool (version %s)
 
 Usage:
-  aistack                          Start the interactive TUI (default)
+  aistack help                     Show this help message (default)
   aistack install --profile <name> Install services from profile (standard-gpu, minimal)
   aistack install <service>        Install a specific service (ollama, openwebui, localai)
   aistack start <service>          Start a service

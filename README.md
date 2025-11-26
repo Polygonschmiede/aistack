@@ -26,7 +26,7 @@ aistack manages AI services (Ollama, Open WebUI, LocalAI) on Ubuntu 24.04 with:
 - **Smart Power Management**: Auto-suspend when idle, Wake-on-LAN for remote wake-up
 - **GPU Management**: NVIDIA GPU detection, metrics, and exclusive locking
 - **Service Orchestration**: Docker Compose-based service lifecycle management
-- **TUI Interface**: Keyboard-driven terminal UI (no mouse required)
+- **CLI Interface**: Comprehensive command-line interface for all operations
 - **Metrics & Monitoring**: Track GPU/CPU utilization, temperature, and power consumption
 
 ---
@@ -89,7 +89,7 @@ aistack health
 aistack - AI Stack Management Tool (version 0.1.0-dev)
 
 Usage:
-  aistack                          Start the interactive TUI (default)
+  aistack help                     Show this help message (default)
   aistack install --profile <name> Install services from profile (standard-gpu, minimal)
   aistack install <service>        Install a specific service (ollama, openwebui, localai)
   aistack start <service>          Start a service
@@ -902,7 +902,6 @@ aistack/
 │   ├── gpulock/          # Exclusive GPU locking
 │   ├── wol/              # Wake-on-LAN
 │   ├── models/           # Model inventory + eviction
-│   ├── tui/              # Terminal UI (Bubble Tea)
 │   ├── logging/          # Structured JSON logger
 │   ├── diag/             # Diagnostics + support bundles
 │   └── secrets/          # Encrypted secret store
@@ -919,7 +918,7 @@ aistack/
 
 **Single Binary**: Static linking (`CGO_ENABLED=0`) for portability
 
-**TUI Framework**: Bubble Tea + Lip Gloss (keyboard-only, no mouse)
+**CLI Interface**: Comprehensive command-line interface with clear help and subcommands
 
 **Container Runtime**: Docker (default), Podman (best-effort support)
 
