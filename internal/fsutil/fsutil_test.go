@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/hanneshildebrand/aistack/internal/logging"
+	"aistack/internal/logging"
 )
 
 func TestGetStateDir(t *testing.T) {
