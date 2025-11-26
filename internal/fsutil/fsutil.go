@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hanneshildebrand/aistack/internal/logging"
+	"aistack/internal/logging"
 )
 
 const (
