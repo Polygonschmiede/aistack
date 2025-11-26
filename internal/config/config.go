@@ -99,6 +99,33 @@ func mergeConfig(dst, src *Config) {
 	// For now, we'll just overwrite it
 	dst.GPULock = src.GPULock
 
+	// Merge idle config
+	if src.Idle.CPUIdleThreshold != 0 {
+		dst.Idle.CPUIdleThreshold = src.Idle.CPUIdleThreshold
+	}
+	if src.Idle.GPUIdleThreshold != 0 {
+		dst.Idle.GPUIdleThreshold = src.Idle.GPUIdleThreshold
+	}
+	if src.Idle.WindowSeconds != 0 {
+		dst.Idle.WindowSeconds = src.Idle.WindowSeconds
+	}
+	if src.Idle.IdleTimeoutSeconds != 0 {
+		dst.Idle.IdleTimeoutSeconds = src.Idle.IdleTimeoutSeconds
+	}
+
+	// Merge power estimation config
+	if src.PowerEstimation.BaselineWatts != 0 {
+		dst.PowerEstimation.BaselineWatts = src.PowerEstimation.BaselineWatts
+	}
+
+	// Merge WoL config
+	if src.WoL.Interface != "" {
+		dst.WoL.Interface = src.WoL.Interface
+	}
+	if src.WoL.MAC != "" {
+		dst.WoL.MAC = src.WoL.MAC
+	}
+
 	// Merge logging config
 	if src.Logging.Level != "" {
 		dst.Logging.Level = src.Logging.Level
