@@ -51,9 +51,10 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode, logger *logging
 		// Try to clean up temp file on failure
 		if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
 			if logger != nil {
-				logger.Warn("cleanup_failed", "Failed to remove temp file",
-					"path", tmpPath,
-					"error", removeErr.Error())
+				logger.Warn("cleanup_failed", "Failed to remove temp file", map[string]interface{}{
+					"path":  tmpPath,
+					"error": removeErr.Error(),
+				})
 			}
 		}
 		return fmt.Errorf("failed to rename file: %w", err)
@@ -67,7 +68,9 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode, logger *logging
 func CloseWithError(closer func() error, logger *logging.Logger, resource string) {
 	if err := closer(); err != nil {
 		if logger != nil {
-			logger.Warn("close_failed", fmt.Sprintf("Failed to close %s", resource), "error", err.Error())
+			logger.Warn("close_failed", fmt.Sprintf("Failed to close %s", resource), map[string]interface{}{
+				"error": err.Error(),
+			})
 		}
 	}
 }
