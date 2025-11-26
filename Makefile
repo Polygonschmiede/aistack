@@ -35,7 +35,13 @@ build-no-cuda: ## Build the binary without CUDA support (force)
 
 test: ## Run unit tests
 	@echo "Running tests..."
-	go test ./... -v
+	@if command -v nvidia-smi >/dev/null 2>&1 && ([ -d "/usr/local/cuda" ] || [ -d "/usr/lib/cuda" ]); then \
+		echo "CUDA detected - running tests with GPU support"; \
+		CGO_ENABLED=1 go test -tags cuda ./... -v; \
+	else \
+		echo "No CUDA detected - running tests without GPU support"; \
+		go test ./... -v; \
+	fi
 
 race: ## Run tests with race detector
 	@echo "Running tests with race detector..."

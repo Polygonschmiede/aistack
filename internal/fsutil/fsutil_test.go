@@ -128,7 +128,7 @@ func TestEnsureStateDirectory(t *testing.T) {
 func TestAtomicWriteFile(t *testing.T) {
 	t.Helper()
 
-	logger := logging.New("test", logging.LevelWarn)
+	logger := logging.NewLogger(logging.LevelWarn)
 
 	tests := []struct {
 		name    string
@@ -191,7 +191,7 @@ func TestAtomicWriteFile(t *testing.T) {
 func TestCloseWithError(t *testing.T) {
 	t.Helper()
 
-	logger := logging.New("test", logging.LevelWarn)
+	logger := logging.NewLogger(logging.LevelWarn)
 
 	tests := []struct {
 		name     string
